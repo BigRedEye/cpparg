@@ -1,9 +1,10 @@
-#include "argp.h"
+#include "cpparg.h"
 
 #include <string>
 
 int main(int argc, const char** argv) {
-    argp::Parser parser("todo");
+    cpparg::Parser parser("test");
+    parser.title("cpparg-test -- test for cpparg.");
     std::string s;
     parser.add('q', "qwe")
         .store(s)
@@ -22,6 +23,7 @@ int main(int argc, const char** argv) {
         .description("delete directory");
     parser.add('c')
         .description("do something");
+    parser.add_help('h', "help");
     parser.parse(argc, argv);
     parser.printHelp();
 }

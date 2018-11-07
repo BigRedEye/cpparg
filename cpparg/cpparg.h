@@ -9,7 +9,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace argp {
+namespace cpparg {
 
 namespace detail {
 
@@ -253,12 +253,36 @@ public:
     {
     }
 
+    Parser& title(std::string_view v) {
+        title_ = std::string(v.begin(), v.end());
+        return *this;
+    }
+
     Processor& add(std::string_view lname) {
         return createProcessor(lname);
     }
 
     Processor& add(char sname, std::string_view lname = "") {
         return createProcessor(sname, lname);
+    }
+
+    Parser& add_help(char sname, std::string_view lname = "") {
+        if (help_) {
+            throw std::logic_error("Cannot add two help options");
+        }
+        Processor& result = createProcessor(sname, lname);
+        result
+            .description("print this help and exit")
+            .handle(
+                [this] (std::string_view) {
+                    printHelp();
+                    exit(0);
+                }
+            );
+
+        help_ = &result;
+
+        return *this;
     }
 
     void parse(int argc, const char* argv[]) {
@@ -274,6 +298,8 @@ public:
     void printHelp(std::string_view errorMessage = "") const {
         if (!errorMessage.empty()) {
             std::cerr << errorMessage << "\n";
+        } else {
+            std::cerr << title_ << "\n";
         }
         std::cerr << "\nUsage:\n" << detail::offset << program_;
         if (!mode_.empty()) {
@@ -301,6 +327,14 @@ public:
                 return !lhs->isOptional();
             }
         );
+        if (help_) {
+            auto it = std::find(sorted.begin(), sorted.end(), help_);
+            /* to preserve relative order */
+            if (it != sorted.end()) {
+                sorted.erase(it);
+                sorted.push_back(help_);
+            }
+        }
 
         for (auto p : sorted) {
             std::cerr << ' ' << p->usage();
@@ -359,10 +393,12 @@ private:
 private:
     std::string program_;
     std::string mode_;
+    std::string title_;
 
     std::vector<Processor> processors_;
     std::unordered_map<std::string_view, Processor*> long_;
     std::unordered_map<char, Processor*> short_;
+    Processor* help_{ nullptr };
 };
 
-} // namespace argp
+} // namespace cpparg

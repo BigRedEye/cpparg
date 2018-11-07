@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
 
-project(argparser-test)
+project(cpparg-test)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -20,7 +20,7 @@ file(
 
 file(
     GLOB HEADERS
-    argp.h
+    cpparg.h
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
