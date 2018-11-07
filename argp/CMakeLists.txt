@@ -20,7 +20,7 @@ file(
 
 file(
     GLOB HEADERS
-    parser.h
+    argp.h
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
