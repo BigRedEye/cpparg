@@ -23,37 +23,35 @@ T from_string(std::string_view s) {
     return result;
 }
 
-static constexpr std::string_view offset = "  ";
-static constexpr size_t TabWidth = 4;
+static constexpr std::string_view OFFSET = "  ";
+static constexpr size_t TAB_WIDTH = 4;
 
 } // namespace detail
 
-// using namespace std::string_literals;
-
-class ProcessorError : public std::runtime_error {
+class processor_error : public std::runtime_error {
 public:
-    ProcessorError(const std::string& what_)
+    processor_error(const std::string& what_)
         : std::runtime_error(what_) {
     }
 
-    ProcessorError(const std::string& name, const std::string& descr)
+    processor_error(const std::string& name, const std::string& descr)
         : std::runtime_error("Cannot parse option " + name + ": " + descr) {
     }
 };
 
-class Processor {
+class processor {
 public:
-    Processor(std::string_view lname)
+    processor(std::string_view lname)
         : lname_(lname.begin(), lname.end()) {
     }
 
-    Processor(char sname, std::string_view lname)
-        : Processor(lname) {
+    processor(char sname, std::string_view lname)
+        : processor(lname) {
         sname_ = sname;
     }
 
     template<typename Val>
-    Processor& store(Val& val) {
+    processor& store(Val& val) {
         handler_ = [this, &val](std::string_view sv) {
             if (flag_) {
                 /* --flag foo */
@@ -62,18 +60,18 @@ public:
                 try {
                     val = detail::from_string<Val>(sv);
                 } catch (std::ios_base::failure& fail) {
-                    throw ProcessorError(name(), fail.what());
+                    throw processor_error(name(), fail.what());
                 }
             }
         };
         if (flag_) {
-            disableFlag_ = [&val] { val = false; };
+            disable_flag_ = [&val] { val = false; };
         }
         return *this;
     }
 
     template<typename Handler>
-    Processor& handle(Handler&& handler) {
+    processor& handle(Handler&& handler) {
         static_assert(
             std::is_invocable_v<Handler, std::string_view>,
             "Handler should take std::string_view as the first argument");
@@ -81,75 +79,76 @@ public:
         return *this;
     }
 
-    Processor& required() {
+    processor& required() {
         required_ = true;
         return *this;
     }
 
-    Processor& optional() {
+    processor& optional() {
         required_ = false;
         return *this;
     }
 
-    Processor& flag() {
+    processor& flag() {
         flag_ = true;
         return *this;
     }
 
-    Processor& argumentType(std::string_view type) {
-        argType_ = std::string(type.begin(), type.end());
+    processor& argument_type(std::string_view type) {
+        arg_type_ = std::string(type.begin(), type.end());
         return *this;
     }
 
-    Processor& defaultArgument(std::string_view defaultArg) {
-        hasDefaultArgument_ = true;
-        defaultArgument_ = std::string(defaultArg.begin(), defaultArg.end());
+    processor& default_argument(std::string_view default_arg) {
+        has_default_argument_ = true;
+        default_argument_ = std::string(default_arg.begin(), default_arg.end());
         return *this;
     }
 
-    Processor& description(std::string_view descr) {
+    processor& description(std::string_view descr) {
         description_ = std::string(descr.begin(), descr.end());
         return *this;
     }
 
 private:
-    friend class Parser;
+    friend class parser;
 
     void parse(std::string_view arg = "") {
         if (!handler_) {
             throw std::logic_error(
-                "Cannot parse option " + name() + ": the handler was not set. Use either store() or process().");
+                "Cannot parse option " + name() +
+                ": the handler was not set. Use either store() or process().");
         }
-        if (arg.empty() && !hasDefaultArgument_) {
-            throw ProcessorError(name(), "argument required.");
+        if (arg.empty() && !has_default_argument_) {
+            throw processor_error(name(), "argument required.");
         }
         if (arg.empty()) {
-            handler_(defaultArgument_);
+            handler_(default_argument_);
         } else {
             handler_(arg);
         }
     }
 
-    void emptyOptionHandler() {
+    void empty_option_handler() {
         if (required_) {
-            throw ProcessorError("Option " + name() + " is required.");
+            throw processor_error("Option " + name() + " is required.");
         } else if (flag_) {
-            if (disableFlag_) {
-                disableFlag_();
+            if (disable_flag_) {
+                disable_flag_();
             } else {
                 /* flag() was called after store() */
                 throw std::logic_error("Do not call store() before flag().");
             }
-        } else if (hasDefaultArgument_) {
+        } else if (has_default_argument_) {
             parse();
         }
     }
 
-    char shortName() const {
+    char short_name() const {
         return sname_;
     }
 
-    std::string_view longName() const {
+    std::string_view long_name() const {
         return lname_;
     }
 
@@ -157,10 +156,10 @@ private:
         if (flag_) {
             return "flag";
         }
-        return argType_;
+        return arg_type_;
     }
 
-    bool isOptional() const {
+    bool is_optional() const {
         return !required_;
     }
 
@@ -176,14 +175,14 @@ private:
     std::string help() const {
         std::stringstream result;
 
-        result << detail::offset;
+        result << detail::OFFSET;
 
-        const bool hasTwoNames = !lname_.empty() && sname_ != EmptyShortName;
+        const bool has_two_names = !lname_.empty() && sname_ != EMPTY_SHORT_NAME;
 
-        if (sname_ != EmptyShortName) {
+        if (sname_ != EMPTY_SHORT_NAME) {
             result << "-" << sname_;
         }
-        if (hasTwoNames) {
+        if (has_two_names) {
             result << ", ";
         }
         if (!lname_.empty()) {
@@ -194,8 +193,8 @@ private:
         }
         result << '\t';
         result << description_;
-        if (hasDefaultArgument_ && !flag_) {
-            result << " [default = " << defaultArgument_ << "]";
+        if (has_default_argument_ && !flag_) {
+            result << " [default = " << default_argument_ << "]";
         }
 
         return result.str();
@@ -204,7 +203,7 @@ private:
     std::string usage() const {
         std::stringstream result;
 
-        if (isOptional()) {
+        if (is_optional()) {
             result << '[';
         }
         if (lname_.empty()) {
@@ -212,10 +211,10 @@ private:
         } else {
             result << "--" << lname_;
         }
-        if (!flag_ && !argType_.empty()) {
-            result << " <" << argType_ << ">";
+        if (!flag_ && !arg_type_.empty()) {
+            result << " <" << arg_type_ << ">";
         }
-        if (isOptional()) {
+        if (is_optional()) {
             result << ']';
         }
 
@@ -223,50 +222,50 @@ private:
     }
 
 private:
-    static constexpr char EmptyShortName = '\0';
+    static constexpr char EMPTY_SHORT_NAME = '\0';
 
     bool required_{false};
     bool flag_{false};
 
-    char sname_{EmptyShortName};
+    char sname_{EMPTY_SHORT_NAME};
     std::string lname_;
 
-    std::string argType_;
+    std::string arg_type_;
     std::string description_;
-    std::string defaultArgument_;
-    bool hasDefaultArgument_{false};
+    std::string default_argument_;
+    bool has_default_argument_{false};
 
     std::function<void(std::string_view)> handler_;
-    std::function<void()> disableFlag_;
+    std::function<void()> disable_flag_;
 };
 
-class Parser {
+class parser {
 public:
-    Parser(std::string_view program, std::string_view mode = "")
+    parser(std::string_view program, std::string_view mode = "")
         : program_(program.begin(), program.end())
         , mode_(mode.begin(), mode.end()) {
     }
 
-    Parser& title(std::string_view v) {
+    parser& title(std::string_view v) {
         title_ = std::string(v.begin(), v.end());
         return *this;
     }
 
-    Processor& add(std::string_view lname) {
-        return createProcessor(lname);
+    processor& add(std::string_view lname) {
+        return create_processor(lname);
     }
 
-    Processor& add(char sname, std::string_view lname = "") {
-        return createProcessor(sname, lname);
+    processor& add(char sname, std::string_view lname = "") {
+        return create_processor(sname, lname);
     }
 
-    Parser& add_help(char sname, std::string_view lname = "") {
+    parser& add_help(char sname, std::string_view lname = "") {
         if (help_) {
             throw std::logic_error("Cannot add two help options");
         }
-        Processor& result = createProcessor(sname, lname);
+        processor& result = create_processor(sname, lname);
         result.description("print this help and exit").handle([this](std::string_view) {
-            printHelp();
+            print_help();
             exit(0);
         });
 
@@ -280,33 +279,35 @@ public:
         (void)argv;
     }
 
-    void exitWithHelp(std::string_view errorMessage = "") const {
-        printHelp(errorMessage);
+    void exit_with_help(std::string_view error_message = "") const {
+        print_help(error_message);
         exit(1);
     }
 
-    void printHelp(std::string_view errorMessage = "") const {
-        if (!errorMessage.empty()) {
-            std::cerr << errorMessage << "\n";
+    void print_help(std::string_view error_message = "") const {
+        if (!error_message.empty()) {
+            std::cerr << error_message << "\n";
         } else {
             std::cerr << title_ << "\n";
         }
-        std::cerr << "\nUsage:\n" << detail::offset << program_;
+        std::cerr << "\nUsage:\n" << detail::OFFSET << program_;
         if (!mode_.empty()) {
             std::cerr << ' ' << mode_;
         }
 
         /* put required arguments first */
-        std::vector<const Processor*> sorted;
-        std::transform(processors_.begin(), processors_.end(), std::back_inserter(sorted), [](const auto& p) {
-            return std::addressof(p);
-        });
-        std::ptrdiff_t count =
-            std::count_if(sorted.begin(), sorted.end(), [](const Processor* p) { return !p->isOptional(); });
-        std::nth_element(
-            sorted.begin(), sorted.begin() + count, sorted.end(), [](const Processor* lhs, const Processor*) {
-                return !lhs->isOptional();
+        std::vector<const processor*> sorted;
+        std::transform(
+            processors_.begin(), processors_.end(), std::back_inserter(sorted), [](const auto& p) {
+                return std::addressof(p);
             });
+        std::ptrdiff_t count = std::count_if(
+            sorted.begin(), sorted.end(), [](const processor* p) { return !p->is_optional(); });
+        std::nth_element(
+            sorted.begin(),
+            sorted.begin() + count,
+            sorted.end(),
+            [](const processor* lhs, const processor*) { return !lhs->is_optional(); });
         if (help_) {
             auto it = std::find(sorted.begin(), sorted.end(), help_);
             /* to preserve relative order */
@@ -322,8 +323,10 @@ public:
         std::cerr << "\n\nOptions:\n";
 
         std::vector<std::string> opts;
-        std::transform(sorted.begin(), sorted.end(), std::back_inserter(opts), [](auto p) { return p->help(); });
-        auto normailzeTabs = [&opts]() {
+        std::transform(sorted.begin(), sorted.end(), std::back_inserter(opts), [](auto p) {
+            return p->help();
+        });
+        auto normailze_tabs = [&opts]() {
             size_t right = 0;
             for (auto& s : opts) {
                 size_t cur = s.find_first_of('\t');
@@ -334,11 +337,11 @@ public:
             for (auto& s : opts) {
                 size_t cur = s.find_first_of('\t');
                 if (cur != std::string::npos) {
-                    s.replace(cur, 1, right - cur + detail::TabWidth, ' ');
+                    s.replace(cur, 1, right - cur + detail::TAB_WIDTH, ' ');
                 }
             }
         };
-        normailzeTabs();
+        normailze_tabs();
         for (auto& s : opts) {
             std::cerr << s << std::endl;
         }
@@ -348,11 +351,11 @@ public:
 
 private:
     template<typename... Args>
-    Processor& createProcessor(Args&&... args) {
+    processor& create_processor(Args&&... args) {
         processors_.emplace_back(std::forward<Args>(args)...);
-        Processor& result = processors_.back();
+        processor& result = processors_.back();
 
-        auto failIfExists = [](auto& map, const auto& key, const auto& value) {
+        auto fail_if_exists = [](auto& map, const auto& key, const auto& value) {
             auto it = map.find(key);
             if (it != map.end()) {
                 std::stringstream err;
@@ -362,8 +365,8 @@ private:
             map.emplace(key, value);
         };
 
-        failIfExists(long_, result.longName(), &result);
-        failIfExists(short_, result.shortName(), &result);
+        fail_if_exists(long_, result.long_name(), &result);
+        fail_if_exists(short_, result.short_name(), &result);
 
         return result;
     }
@@ -373,10 +376,10 @@ private:
     std::string mode_;
     std::string title_;
 
-    std::vector<Processor> processors_;
-    std::unordered_map<std::string_view, Processor*> long_;
-    std::unordered_map<char, Processor*> short_;
-    Processor* help_{nullptr};
+    std::vector<processor> processors_;
+    std::unordered_map<std::string_view, processor*> long_;
+    std::unordered_map<char, processor*> short_;
+    processor* help_{nullptr};
 };
 
 } // namespace cpparg
