@@ -10,6 +10,7 @@ include(cmake/DownloadGoogleTest.cmake)
 file(GLOB SOURCES
     main.cpp
     parser.cpp
+    string_utils.cpp
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})
