@@ -7,11 +7,14 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
+#include <limits>
+#include <tuple>
 
 namespace cpparg {
 
-namespace detail {
+namespace string_utils {
 
 template<typename T>
 T from_string(std::string_view s) {
@@ -22,6 +25,39 @@ T from_string(std::string_view s) {
     ss >> result;
     return result;
 }
+
+template<typename T>
+std::string to_string(T&& t) {
+    std::ostringstream os;
+    os << t;
+    return os.str();
+}
+
+bool starts_with(std::string_view str, std::string_view prefix) {
+    return str.size() >= prefix.size() && str.compare(0, prefix.size(), prefix) == 0;
+}
+
+bool ends_with(std::string_view str, std::string_view suffix) {
+    return str.size() >= suffix.size()
+        && str.compare(str.size() - suffix.size(), std::string_view::npos, suffix) == 0;
+}
+
+template<typename ...Args>
+std::string join(Args&&... args) {
+    std::string s;
+    auto printer = [&s] (const auto& val) {
+        s += to_string(val);
+        return s;
+    };
+    std::apply([&printer](const auto& ...val) {
+        std::make_tuple(printer(val)...);
+    }, std::tuple(args...));
+    return s;
+}
+
+}
+
+namespace detail {
 
 static constexpr std::string_view OFFSET = "  ";
 static constexpr size_t TAB_WIDTH = 4;
@@ -63,7 +99,7 @@ public:
                 val = true;
             } else {
                 try {
-                    val = detail::from_string<Val>(sv);
+                    val = string_utils::from_string<Val>(sv);
                 } catch (std::ios_base::failure& fail) {
                     throw processor_error(name(), fail.what());
                 }
@@ -263,6 +299,118 @@ private:
     std::function<void()> disable_flag_;
 };
 
+class free_args_processor {
+public:
+    class invalid_free_arguments_count : public std::runtime_error {
+    public:
+        invalid_free_arguments_count(size_t count, size_t maximum)
+            : std::runtime_error(
+                string_utils::join("Invalid free arguments count, got ", count, "while maximum is ", maximum)) {
+        }
+    };
+
+public:
+    free_args_processor() = default;
+
+    free_args_processor& max(size_t count) {
+        max_count_ = count;
+        return *this;
+    }
+
+    free_args_processor& unlimited() {
+        return max(UNLIMITED);
+    }
+
+    template<typename Handler>
+    free_args_processor& handle(Handler&& handler) {
+        static_assert(
+            std::is_invocable_v<Handler, const std::vector<std::string_view>&>,
+            "Handler should take std::vector<std::string_view> as the first argument");
+        handler_ = std::forward<Handler>(handler);
+        return *this;
+    }
+
+    template<typename T>
+    free_args_processor& store(std::vector<T>& free_args) {
+        handler_ = [&free_args](const std::vector<std::string_view>& args) {
+            for (auto sw : args) {
+                free_args.push_back(string_utils::from_string<T>(sw));
+            }
+        };
+        return *this;
+    }
+
+    free_args_processor& name(std::string_view name) {
+        name_ = std::string(name.begin(), name.end());
+        return *this;
+    }
+
+    void parse(const std::vector<std::string_view>& args) {
+        if (args.size() > max_count_) {
+            throw invalid_free_arguments_count(args.size(), max_count_);
+        }
+    }
+
+    size_t max_count() const {
+        return max_count_;
+    }
+
+    std::string usage() const {
+        if (max_count() > 0) {
+            return string_utils::join(name_, "...");
+        } else {
+            return "";
+        }
+    }
+
+    std::string help() const {
+        if (max_count() > 0) {
+            return string_utils::join(name_, "...");
+        } else {
+            return "";
+        }
+    }
+
+private:
+    static constexpr size_t UNLIMITED = std::numeric_limits<size_t>::max();
+
+    size_t max_count_{0};
+    std::string name_;
+    std::function<void(const std::vector<std::string_view>&)> handler_;
+};
+
+namespace detail {
+
+class argument_parser {
+public:
+    enum class arg_type {
+        positional,
+        keyword,
+        free_arg
+    };
+
+    argument_parser(std::string_view arg, size_t position, size_t positional_count)
+        : arg_(arg)
+        , can_be_positilnal_(position < positional_count) {
+    }
+
+    arg_type type() const {
+        if (string_utils::starts_with(arg_, "-")) {
+            return arg_type::keyword;
+        } else if (can_be_positilnal_) {
+            return arg_type::positional;
+        } else {
+            return arg_type::free_arg;
+        }
+    }
+
+private:
+    std::string_view arg_;
+    bool can_be_positilnal_;
+};
+
+}
+
 class parser {
 public:
     parser(std::string_view program, std::string_view mode = "")
@@ -289,6 +437,10 @@ public:
         return processors_.back();
     }
 
+    free_args_processor& free_arguments(std::string_view name) {
+        return free_args_processor_.name(name);
+    }
+
     parser& add_help(char sname, std::string_view lname = "") {
         if (help_) {
             throw std::logic_error("Cannot add two help options");
@@ -304,32 +456,16 @@ public:
         return *this;
     }
 
-    template<typename Handler>
-    parser& handle_free_arguments(Handler&& handler) {
-        static_assert(
-            std::is_invocable_v<Handler, const std::vector<std::string_view>&>,
-            "Handler should take std::vector<std::string_view> as the first argument");
-        free_args_handler_ = std::forward<Handler>(handler);
-        return *this;
-    }
-
-    template<typename T>
-    parser& store_free_arguments(std::vector<T>& free_args) {
-        free_args_handler_ = [&free_args](const std::vector<std::string_view>& args) {
-            for (auto sw : args) {
-                free_args.push_back(detail::from_string<T>(sw));
-            }
-        };
-        return *this;
-    }
-
     void parse(int argc, const char* argv[]) {
-        while (*++argv) {/*
-            argument_parser arg_parser(argv[i]);
+        size_t next_positional = 0;
+        while (*++argv) {
+            detail::argument_parser arg_parser(*argv, next_positional, positional_.size());
             switch (arg_parser.type()) {
-            case argument_parser::arg_type::option:
-
-            }*/
+            case detail::argument_parser::arg_type::keyword:
+                break;
+            default:
+                break;
+            }
         }
     }
 
@@ -376,9 +512,7 @@ public:
             out << ' ' << p->usage();
         }
 
-        if (free_args_handler_) {
-            out << " ...";
-        }
+        out << ' ' << free_args_processor_.usage();
 
         /* add help at first line */
         if (help_) {
@@ -450,7 +584,8 @@ private:
     std::unordered_map<std::string_view, processor*> long_;
     std::unordered_map<char, processor*> short_;
     processor* help_{nullptr};
-    std::function<void(const std::vector<std::string_view>&)> free_args_handler_;
+
+    free_args_processor free_args_processor_;
 };
 
 } // namespace cpparg

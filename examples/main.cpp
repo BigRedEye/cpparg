@@ -26,8 +26,8 @@ int main(int argc, const char** argv) {
     parser.add("delete").value_type("DIR").description("delete directory");
     parser.add('c').description("do something");
     parser.add_help('h', "help");
-    parser.parse(argc, argv);
     std::vector<int> free_args;
-    parser.store_free_arguments(free_args);
+    parser.free_arguments("files").unlimited().store(free_args);
+    parser.parse(argc, argv);
     parser.print_help();
 }
