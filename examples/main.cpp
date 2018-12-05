@@ -1,6 +1,7 @@
 #include <cpparg/cpparg.h>
 
 #include <string>
+#include <map>
 
 int main(int argc, const char** argv) {
     cpparg::parser parser("test");
@@ -8,17 +9,25 @@ int main(int argc, const char** argv) {
     std::string s;
     parser.add('q', "qwe")
         .store(s)
-        .default_argument("str")
-        .argument_type("STRING")
+        .default_value("str")
+        .value_type("STRING")
         .description("some string");
     parser.add('a', "add")
         .handle([](std::string_view v) { std::cout << v << std::endl; })
         .required()
-        .argument_type("FILE")
+        .value_type("FILE")
         .description("files to commit");
-    parser.add("delete").argument_type("DIR").description("delete directory");
+    int i;
+    parser.positional("i")
+        .store(i)
+        .required()
+        .value_type("INTEGER")
+        .description("positional interger");
+    parser.add("delete").value_type("DIR").description("delete directory");
     parser.add('c').description("do something");
     parser.add_help('h', "help");
     parser.parse(argc, argv);
+    std::vector<int> free_args;
+    parser.store_free_arguments(free_args);
     parser.print_help();
 }

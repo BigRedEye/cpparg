@@ -41,8 +41,13 @@ public:
 
 class processor {
 public:
+    processor(size_t position, std::string_view name)
+        : position_(position)
+        , lname_(name.begin(), name.end()) {
+    }
+
     processor(std::string_view lname)
-        : lname_(lname.begin(), lname.end()) {
+        : processor(NON_POSITIONAL, lname) {
     }
 
     processor(char sname, std::string_view lname)
@@ -94,14 +99,14 @@ public:
         return *this;
     }
 
-    processor& argument_type(std::string_view type) {
+    processor& value_type(std::string_view type) {
         arg_type_ = std::string(type.begin(), type.end());
         return *this;
     }
 
-    processor& default_argument(std::string_view default_arg) {
-        has_default_argument_ = true;
-        default_argument_ = std::string(default_arg.begin(), default_arg.end());
+    processor& default_value(std::string_view default_val) {
+        has_default_value_ = true;
+        default_value_ = std::string(default_val.begin(), default_val.end());
         return *this;
     }
 
@@ -119,11 +124,11 @@ private:
                 "Cannot parse option " + name() +
                 ": the handler was not set. Use either store() or process().");
         }
-        if (arg.empty() && !has_default_argument_) {
+        if (arg.empty() && !has_default_value_) {
             throw processor_error(name(), "argument required.");
         }
         if (arg.empty()) {
-            handler_(default_argument_);
+            handler_(default_value_);
         } else {
             handler_(arg);
         }
@@ -139,7 +144,7 @@ private:
                 /* flag() was called after store() */
                 throw std::logic_error("Do not call store() before flag().");
             }
-        } else if (has_default_argument_) {
+        } else if (has_default_value_) {
             parse();
         }
     }
@@ -159,8 +164,16 @@ private:
         return arg_type_;
     }
 
+    bool is_required() const {
+        return required_;
+    }
+
     bool is_optional() const {
         return !required_;
+    }
+
+    bool is_positional() const {
+        return position_ != NON_POSITIONAL;
     }
 
     std::string name() const {
@@ -179,22 +192,26 @@ private:
 
         const bool has_two_names = !lname_.empty() && sname_ != EMPTY_SHORT_NAME;
 
-        if (sname_ != EMPTY_SHORT_NAME) {
-            result << "-" << sname_;
-        }
-        if (has_two_names) {
-            result << ", ";
-        }
-        if (!lname_.empty()) {
-            result << "--" << lname_;
+        if (is_positional()) {
+            result << lname_;
+        } else {
+            if (sname_ != EMPTY_SHORT_NAME) {
+                result << "-" << sname_;
+            }
+            if (has_two_names) {
+                result << ", ";
+            }
+            if (!lname_.empty()) {
+                result << "--" << lname_;
+            }
         }
         if (!type().empty()) {
             result << " <" << type() << ">";
         }
         result << '\t';
         result << description_;
-        if (has_default_argument_ && !flag_) {
-            result << " [default = " << default_argument_ << "]";
+        if (has_default_value_ && !flag_) {
+            result << " [default = " << default_value_ << "]";
         }
 
         return result.str();
@@ -206,10 +223,14 @@ private:
         if (is_optional()) {
             result << '[';
         }
-        if (lname_.empty()) {
-            result << "-" << std::string(1, sname_);
+        if (is_positional()) {
+            result << lname_;
         } else {
-            result << "--" << lname_;
+            if (lname_.empty()) {
+                result << "-" << std::string(1, sname_);
+            } else {
+                result << "--" << lname_;
+            }
         }
         if (!flag_ && !arg_type_.empty()) {
             result << " <" << arg_type_ << ">";
@@ -223,17 +244,20 @@ private:
 
 private:
     static constexpr char EMPTY_SHORT_NAME = '\0';
+    static constexpr size_t NON_POSITIONAL = 0;
 
     bool required_{false};
     bool flag_{false};
+    bool has_default_value_{false};
 
     char sname_{EMPTY_SHORT_NAME};
     std::string lname_;
 
+    size_t position_{NON_POSITIONAL};
+
     std::string arg_type_;
     std::string description_;
-    std::string default_argument_;
-    bool has_default_argument_{false};
+    std::string default_value_;
 
     std::function<void(std::string_view)> handler_;
     std::function<void()> disable_flag_;
@@ -259,6 +283,12 @@ public:
         return create_processor(sname, lname);
     }
 
+    processor& positional(std::string_view name) {
+        processors_.emplace_back(processors_.size(), name);
+        positional_.push_back(std::addressof(processors_.back()));
+        return processors_.back();
+    }
+
     parser& add_help(char sname, std::string_view lname = "") {
         if (help_) {
             throw std::logic_error("Cannot add two help options");
@@ -274,9 +304,33 @@ public:
         return *this;
     }
 
+    template<typename Handler>
+    parser& handle_free_arguments(Handler&& handler) {
+        static_assert(
+            std::is_invocable_v<Handler, const std::vector<std::string_view>&>,
+            "Handler should take std::vector<std::string_view> as the first argument");
+        free_args_handler_ = std::forward<Handler>(handler);
+        return *this;
+    }
+
+    template<typename T>
+    parser& store_free_arguments(std::vector<T>& free_args) {
+        free_args_handler_ = [&free_args](const std::vector<std::string_view>& args) {
+            for (auto sw : args) {
+                free_args.push_back(detail::from_string<T>(sw));
+            }
+        };
+        return *this;
+    }
+
     void parse(int argc, const char* argv[]) {
-        (void)argc;
-        (void)argv;
+        while (*++argv) {/*
+            argument_parser arg_parser(argv[i]);
+            switch (arg_parser.type()) {
+            case argument_parser::arg_type::option:
+
+            }*/
+        }
     }
 
     void exit_with_help(std::string_view error_message = "") const {
@@ -284,15 +338,17 @@ public:
         exit(1);
     }
 
-    void print_help(std::string_view error_message = "") const {
+    std::string help_message(std::string_view error_message = "") const {
+        std::stringstream out;
+
         if (!error_message.empty()) {
-            std::cerr << error_message << "\n";
+            out << error_message << "\n";
         } else {
-            std::cerr << title_ << "\n";
+            out << title_ << "\n";
         }
-        std::cerr << "\nUsage:\n" << detail::OFFSET << program_;
+        out << "\nUsage:\n" << detail::OFFSET << program_;
         if (!mode_.empty()) {
-            std::cerr << ' ' << mode_;
+            out << ' ' << mode_;
         }
 
         /* put required arguments first */
@@ -301,26 +357,35 @@ public:
             processors_.begin(), processors_.end(), std::back_inserter(sorted), [](const auto& p) {
                 return std::addressof(p);
             });
-        std::ptrdiff_t count = std::count_if(
-            sorted.begin(), sorted.end(), [](const processor* p) { return !p->is_optional(); });
-        std::nth_element(
-            sorted.begin(),
-            sorted.begin() + count,
-            sorted.end(),
-            [](const processor* lhs, const processor*) { return !lhs->is_optional(); });
+        std::sort(sorted.begin(), sorted.end(), [](const processor* lhs, const processor* rhs) {
+            if (lhs->is_positional() != rhs->is_positional()) {
+                return rhs->is_positional();
+            } else {
+                return lhs->is_required();
+            }
+        });
+
         if (help_) {
             auto it = std::find(sorted.begin(), sorted.end(), help_);
-            /* to preserve relative order */
             if (it != sorted.end()) {
                 sorted.erase(it);
-                sorted.push_back(help_);
             }
         }
 
         for (auto p : sorted) {
-            std::cerr << ' ' << p->usage();
+            out << ' ' << p->usage();
         }
-        std::cerr << "\n\nOptions:\n";
+
+        if (free_args_handler_) {
+            out << " ...";
+        }
+
+        /* add help at first line */
+        if (help_) {
+            sorted.insert(sorted.begin(), help_);
+        }
+
+        out << "\n\nOptions:\n";
 
         std::vector<std::string> opts;
         std::transform(sorted.begin(), sorted.end(), std::back_inserter(opts), [](auto p) {
@@ -343,10 +408,14 @@ public:
         };
         normailze_tabs();
         for (auto& s : opts) {
-            std::cerr << s << std::endl;
+            out << s << std::endl;
         }
 
-        std::cerr << std::endl;
+        return out.str();
+    }
+
+    void print_help(std::string_view error_message = "") const {
+        std::cerr << help_message(error_message) << std::endl;
     }
 
 private:
@@ -377,9 +446,11 @@ private:
     std::string title_;
 
     std::vector<processor> processors_;
+    std::vector<processor*> positional_;
     std::unordered_map<std::string_view, processor*> long_;
     std::unordered_map<char, processor*> short_;
     processor* help_{nullptr};
+    std::function<void(const std::vector<std::string_view>&)> free_args_handler_;
 };
 
 } // namespace cpparg
