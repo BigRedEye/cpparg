@@ -28,7 +28,7 @@ T from_string(std::string_view s) {
 
 template<typename T>
 std::string to_string(T&& t) {
-    std::ostringstream os;
+    static std::ostringstream os;
     os << t;
     return os.str();
 }
@@ -305,7 +305,7 @@ public:
     public:
         invalid_free_arguments_count(size_t count, size_t maximum)
             : std::runtime_error(
-                string_utils::join("Invalid free arguments count, got ", count, "while maximum is ", maximum)) {
+                string_utils::join("Invalid free arguments count, got ", count, " while maximum is ", maximum)) {
         }
     };
 
