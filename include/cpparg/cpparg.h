@@ -20,6 +20,7 @@ template<typename T>
 T from_string(std::string_view s) {
     static std::istringstream ss;
     ss.exceptions(std::istringstream::failbit);
+    ss.clear();
     ss.str(std::string(s.begin(), s.end()));
     T result;
     ss >> result;
@@ -29,6 +30,8 @@ T from_string(std::string_view s) {
 template<typename T>
 std::string to_string(T&& t) {
     static std::ostringstream os;
+    os.clear();
+    os.str("");
     os << t;
     return os.str();
 }
