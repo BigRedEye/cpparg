@@ -47,15 +47,7 @@ bool ends_with(std::string_view str, std::string_view suffix) {
 
 template<typename ...Args>
 std::string join(Args&&... args) {
-    std::string s;
-    auto printer = [&s] (const auto& val) {
-        s += to_string(val);
-        return s;
-    };
-    std::apply([&printer](const auto& ...val) {
-        std::make_tuple(printer(val)...);
-    }, std::make_tuple(args...));
-    return s;
+    return ("" + ... + to_string(args));
 }
 
 }
