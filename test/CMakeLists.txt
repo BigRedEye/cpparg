@@ -10,7 +10,7 @@ include(cmake/DownloadGoogleTest.cmake)
 file(GLOB SOURCES
     main.cpp
     parser.cpp
-    string_utils.cpp
+    util.cpp
     args_builder.cpp
 )
 

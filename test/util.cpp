@@ -1,9 +1,9 @@
 #include <gtest/gtest.h>
 #include <cpparg/cpparg.h>
 
-namespace su = cpparg::string_utils;
+namespace su = cpparg::util;
 
-TEST(string_utils, join) {
+TEST(util, join) {
     EXPECT_EQ("1 2, qwe, 3", su::join(1, ' ', 2, ", ", "qw", 'e', ", ", 3ull));
     EXPECT_EQ("", su::join());
     EXPECT_EQ("123123123", su::join('1', "23", 123123));
@@ -29,7 +29,7 @@ bool operator==(const dummy& lhs, const dummy& rhs) {
     return lhs.n == rhs.n && lhs.d == rhs.d && lhs.s == rhs.s;
 }
 
-TEST(string_utils, to_string) {
+TEST(util, to_string) {
     EXPECT_EQ("1", su::to_string(1));
     EXPECT_EQ("abc", su::to_string("abc"));
     EXPECT_EQ("c", su::to_string('c'));
@@ -38,7 +38,7 @@ TEST(string_utils, to_string) {
     EXPECT_EQ("15 3.14 name", su::to_string(dummy{ 15, 3.14, "name" }));
 }
 
-TEST(string_utils, from_string) {
+TEST(util, from_string) {
     EXPECT_EQ(1, su::from_string<short>("1"));
     EXPECT_EQ("abc", su::from_string<std::string>("abc"));
     EXPECT_EQ('c', su::from_string<char>("c"));
@@ -47,7 +47,7 @@ TEST(string_utils, from_string) {
     EXPECT_EQ((dummy{ 15, 3.14, "name"}), su::from_string<dummy>("15 3.14 name"));
 }
 
-TEST(string_utils, starts_with) {
+TEST(util, starts_with) {
     EXPECT_TRUE(su::starts_with("123", "12"));
     EXPECT_TRUE(su::starts_with("abc  c", ""));
     EXPECT_TRUE(su::starts_with("abc  c", "abc "));
@@ -56,8 +56,7 @@ TEST(string_utils, starts_with) {
     EXPECT_FALSE(su::starts_with("", "cd"));
 }
 
-TEST(string_utils, ends_with) {
-    using namespace std::literals;
+TEST(util, ends_with) {
     EXPECT_TRUE(su::ends_with("123", "23"));
     EXPECT_TRUE(su::ends_with("abc  c", ""));
     EXPECT_TRUE(su::ends_with("abc  c", " c"));
