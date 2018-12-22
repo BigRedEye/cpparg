@@ -11,9 +11,14 @@ file(GLOB SOURCES
     main.cpp
     parser.cpp
     string_utils.cpp
+    args_builder.cpp
 )
 
-add_executable(${PROJECT_NAME} ${SOURCES})
+file(GLOB HEADERS
+    args_builder.h
+)
+
+add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
 
 target_link_libraries(${PROJECT_NAME} PUBLIC cpparg gtest_main gtest)
 

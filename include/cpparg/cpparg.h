@@ -1,34 +1,41 @@
+#pragma once
+
 #include <algorithm>
 #include <cstdlib>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <limits>
-#include <tuple>
 
 namespace cpparg {
 
 namespace string_utils {
 
+inline std::string str(std::string_view view) {
+    return std::string(view.begin(), view.end());
+}
+
 template<typename T>
-T from_string(std::string_view s) {
+inline T from_string(std::string_view s) {
     static std::istringstream ss;
     ss.exceptions(std::istringstream::failbit);
     ss.clear();
-    ss.str(std::string(s.begin(), s.end()));
+    ss.str(str(s));
     T result;
     ss >> result;
     return result;
 }
 
 template<typename T>
-std::string to_string(T&& t) {
+inline std::string to_string(T&& t) {
     static std::ostringstream os;
     os.clear();
     os.str("");
@@ -36,21 +43,21 @@ std::string to_string(T&& t) {
     return os.str();
 }
 
-bool starts_with(std::string_view str, std::string_view prefix) {
+inline bool starts_with(std::string_view str, std::string_view prefix) {
     return str.size() >= prefix.size() && str.compare(0, prefix.size(), prefix) == 0;
 }
 
-bool ends_with(std::string_view str, std::string_view suffix) {
-    return str.size() >= suffix.size()
-        && str.compare(str.size() - suffix.size(), std::string_view::npos, suffix) == 0;
+inline bool ends_with(std::string_view str, std::string_view suffix) {
+    return str.size() >= suffix.size() &&
+           str.compare(str.size() - suffix.size(), std::string_view::npos, suffix) == 0;
 }
 
 template<typename ...Args>
-std::string join(Args&&... args) {
+inline std::string join(Args&&... args) {
     return ("" + ... + to_string(args));
 }
 
-}
+} // namespace string_utils
 
 namespace detail {
 
@@ -73,8 +80,8 @@ public:
 class processor {
 public:
     processor(size_t position, std::string_view name)
-        : position_(position)
-        , lname_(name.begin(), name.end()) {
+        : lname_(name.begin(), name.end())
+        , position_(position) {
     }
 
     processor(std::string_view lname)
@@ -90,7 +97,7 @@ public:
     processor& store(Val& val) {
         handler_ = [this, &val](std::string_view sv) {
             if (flag_) {
-                /* --flag foo */
+                /* --flag anything */
                 val = true;
             } else {
                 try {
@@ -131,18 +138,18 @@ public:
     }
 
     processor& value_type(std::string_view type) {
-        arg_type_ = std::string(type.begin(), type.end());
+        arg_type_ = string_utils::str(type);
         return *this;
     }
 
     processor& default_value(std::string_view default_val) {
         has_default_value_ = true;
-        default_value_ = std::string(default_val.begin(), default_val.end());
+        default_value_ = string_utils::str(default_val);
         return *this;
     }
 
     processor& description(std::string_view descr) {
-        description_ = std::string(descr.begin(), descr.end());
+        description_ = string_utils::str(descr);
         return *this;
     }
 
@@ -210,7 +217,7 @@ private:
     std::string name() const {
         if (lname_.empty()) {
             /* option has only short name */
-            return std::string(sname_, 1);
+            return std::string(1, sname_);
         } else {
             return lname_;
         }
@@ -299,8 +306,11 @@ public:
     class invalid_free_arguments_count : public std::runtime_error {
     public:
         invalid_free_arguments_count(size_t count, size_t maximum)
-            : std::runtime_error(
-                string_utils::join("Invalid free arguments count, got ", count, " while maximum is ", maximum)) {
+            : std::runtime_error(string_utils::join(
+                  "Invalid free arguments count, got ",
+                  count,
+                  " while maximum is ",
+                  maximum)) {
         }
     };
 
@@ -336,13 +346,16 @@ public:
     }
 
     free_args_processor& name(std::string_view name) {
-        name_ = std::string(name.begin(), name.end());
+        name_ = string_utils::str(name);
         return *this;
     }
 
     void parse(const std::vector<std::string_view>& args) {
         if (args.size() > max_count_) {
             throw invalid_free_arguments_count(args.size(), max_count_);
+        }
+        if (handler_) {
+            handler_(args);
         }
     }
 
@@ -378,11 +391,7 @@ namespace detail {
 
 class argument_parser {
 public:
-    enum class arg_type {
-        positional,
-        keyword,
-        free_arg
-    };
+    enum class arg_type { positional, short_name, long_name, free_arg };
 
     argument_parser(std::string_view arg, size_t position, size_t positional_count)
         : arg_(arg)
@@ -390,12 +399,25 @@ public:
     }
 
     arg_type type() const {
-        if (string_utils::starts_with(arg_, "-")) {
-            return arg_type::keyword;
+        if (string_utils::starts_with(arg_, "--")) {
+            return arg_type::long_name;
+        } else if (string_utils::starts_with(arg_, "-")) {
+            return arg_type::short_name;
         } else if (can_be_positilnal_) {
             return arg_type::positional;
         } else {
             return arg_type::free_arg;
+        }
+    }
+
+    std::string_view name() const {
+        switch (type()) {
+        case arg_type::short_name:
+            return arg_.substr(1);
+        case arg_type::long_name:
+            return arg_.substr(2);
+        default:
+            return "";
         }
     }
 
@@ -404,7 +426,7 @@ private:
     bool can_be_positilnal_;
 };
 
-}
+} // namespace detail
 
 class parser {
 public:
@@ -414,7 +436,7 @@ public:
     }
 
     parser& title(std::string_view v) {
-        title_ = std::string(v.begin(), v.end());
+        title_ = string_utils::str(v);
         return *this;
     }
 
@@ -451,20 +473,47 @@ public:
         return *this;
     }
 
-    void parse(int argc, const char* argv[]) {
+    void parse(int, const char* argv[]) {
         size_t next_positional = 0;
+        std::vector<std::string_view> free_args;
         while (*++argv) {
             detail::argument_parser arg_parser(*argv, next_positional, positional_.size());
+            if (arg_parser.type() == detail::argument_parser::arg_type::free_arg) {
+                free_args.push_back(arg_parser.name());
+                continue;
+            }
+
+            std::optional<processor> p;
+            auto try_to_find = [] (const auto& map, const auto& name) -> decltype(p) {
+                auto it = map.find(name);
+                if (it != map.end()) {
+                    return *it->second;
+                } else {
+                    return {};
+                }
+            };
+
             switch (arg_parser.type()) {
-            case detail::argument_parser::arg_type::keyword:
+            case detail::argument_parser::arg_type::short_name:
+                p = try_to_find(short_, arg_parser.name()[0]);
+                break;
+            case detail::argument_parser::arg_type::long_name:
+                p = try_to_find(long_, string_utils::str(arg_parser.name()));
+                break;
+            case detail::argument_parser::arg_type::positional:
+                p = *positional_[next_positional++];
                 break;
             default:
                 break;
             }
+
+            if (!p) {
+                exit_with_help(string_utils::join("Unknown option ", arg_parser.name(), "."));
+            }
         }
     }
 
-    void exit_with_help(std::string_view error_message = "") const {
+    void exit_with_help(std::string_view error_message = "") const __attribute__((noreturn)) {
         print_help(error_message);
         exit(1);
     }
@@ -548,12 +597,12 @@ public:
     }
 
 private:
-    template<typename... Args>
+    template<typename ...Args>
     processor& create_processor(Args&&... args) {
         processors_.emplace_back(std::forward<Args>(args)...);
         processor& result = processors_.back();
 
-        auto fail_if_exists = [](auto& map, const auto& key, const auto& value) {
+        auto try_to_insert = [](auto& map, const auto& key, const auto& value) {
             auto it = map.find(key);
             if (it != map.end()) {
                 std::stringstream err;
@@ -563,8 +612,8 @@ private:
             map.emplace(key, value);
         };
 
-        fail_if_exists(long_, result.long_name(), &result);
-        fail_if_exists(short_, result.short_name(), &result);
+        try_to_insert(long_, string_utils::str(result.long_name()), &result);
+        try_to_insert(short_, result.short_name(), &result);
 
         return result;
     }
@@ -576,7 +625,7 @@ private:
 
     std::vector<processor> processors_;
     std::vector<processor*> positional_;
-    std::unordered_map<std::string_view, processor*> long_;
+    std::unordered_map<std::string, processor*> long_;
     std::unordered_map<char, processor*> short_;
     processor* help_{nullptr};
 
