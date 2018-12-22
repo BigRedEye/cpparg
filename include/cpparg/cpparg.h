@@ -17,7 +17,7 @@
 
 namespace cpparg {
 
-namespace string_utils {
+namespace util {
 
 inline std::string str(std::string_view view) {
     return std::string(view.begin(), view.end());
@@ -101,7 +101,7 @@ public:
                 val = true;
             } else {
                 try {
-                    val = string_utils::from_string<Val>(sv);
+                    val = util::from_string<Val>(sv);
                 } catch (std::ios_base::failure& fail) {
                     throw processor_error(name(), fail.what());
                 }
@@ -138,18 +138,18 @@ public:
     }
 
     processor& value_type(std::string_view type) {
-        arg_type_ = string_utils::str(type);
+        arg_type_ = util::str(type);
         return *this;
     }
 
     processor& default_value(std::string_view default_val) {
         has_default_value_ = true;
-        default_value_ = string_utils::str(default_val);
+        default_value_ = util::str(default_val);
         return *this;
     }
 
     processor& description(std::string_view descr) {
-        description_ = string_utils::str(descr);
+        description_ = util::str(descr);
         return *this;
     }
 
@@ -306,7 +306,7 @@ public:
     class invalid_free_arguments_count : public std::runtime_error {
     public:
         invalid_free_arguments_count(size_t count, size_t maximum)
-            : std::runtime_error(string_utils::join(
+            : std::runtime_error(util::join(
                   "Invalid free arguments count, got ",
                   count,
                   " while maximum is ",
@@ -339,14 +339,14 @@ public:
     free_args_processor& store(std::vector<T>& free_args) {
         handler_ = [&free_args](const std::vector<std::string_view>& args) {
             for (auto sw : args) {
-                free_args.push_back(string_utils::from_string<T>(sw));
+                free_args.push_back(util::from_string<T>(sw));
             }
         };
         return *this;
     }
 
     free_args_processor& name(std::string_view name) {
-        name_ = string_utils::str(name);
+        name_ = util::str(name);
         return *this;
     }
 
@@ -365,7 +365,7 @@ public:
 
     std::string usage() const {
         if (max_count() > 0) {
-            return string_utils::join(name_, "...");
+            return util::join(name_, "...");
         } else {
             return "";
         }
@@ -373,7 +373,7 @@ public:
 
     std::string help() const {
         if (max_count() > 0) {
-            return string_utils::join(name_, "...");
+            return util::join(name_, "...");
         } else {
             return "";
         }
@@ -399,9 +399,9 @@ public:
     }
 
     arg_type type() const {
-        if (string_utils::starts_with(arg_, "--")) {
+        if (util::starts_with(arg_, "--")) {
             return arg_type::long_name;
-        } else if (string_utils::starts_with(arg_, "-")) {
+        } else if (util::starts_with(arg_, "-")) {
             return arg_type::short_name;
         } else if (can_be_positilnal_) {
             return arg_type::positional;
@@ -436,7 +436,7 @@ public:
     }
 
     parser& title(std::string_view v) {
-        title_ = string_utils::str(v);
+        title_ = util::str(v);
         return *this;
     }
 
@@ -498,7 +498,7 @@ public:
                 p = try_to_find(short_, arg_parser.name()[0]);
                 break;
             case detail::argument_parser::arg_type::long_name:
-                p = try_to_find(long_, string_utils::str(arg_parser.name()));
+                p = try_to_find(long_, util::str(arg_parser.name()));
                 break;
             case detail::argument_parser::arg_type::positional:
                 p = *positional_[next_positional++];
@@ -508,7 +508,7 @@ public:
             }
 
             if (!p) {
-                exit_with_help(string_utils::join("Unknown option ", arg_parser.name(), "."));
+                exit_with_help(util::join("Unknown option ", arg_parser.name(), "."));
             }
         }
     }
@@ -612,7 +612,7 @@ private:
             map.emplace(key, value);
         };
 
-        try_to_insert(long_, string_utils::str(result.long_name()), &result);
+        try_to_insert(long_, util::str(result.long_name()), &result);
         try_to_insert(short_, result.short_name(), &result);
 
         return result;
