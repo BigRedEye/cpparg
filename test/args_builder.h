@@ -1,9 +1,9 @@
 #pragma once
 
-#include <string_view>
 #include <string>
-#include <vector>
+#include <string_view>
 #include <tuple>
+#include <vector>
 
 namespace cpparg::test {
 
@@ -19,4 +19,4 @@ private:
     std::vector<const char*> ptrs_;
 };
 
-}
+} // namespace cpparg::test

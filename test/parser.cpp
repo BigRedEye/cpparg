@@ -1,5 +1,5 @@
-#include <gtest/gtest.h>
 #include <cpparg/cpparg.h>
+#include <gtest/gtest.h>
 
 #include "args_builder.h"
 
@@ -36,9 +36,7 @@ TEST(parser, numbers_parsing) {
     parser.add('d', "double").store(d);
 
     cpparg::test::args_builder builder("./program");
-    builder
-        .add("-i", "123")
-        .add("--double", "1.41421356");
+    builder.add("-i", "123").add("--double", "1.41421356");
     auto [argc, argv] = builder.get();
 
     parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow);
@@ -60,10 +58,7 @@ TEST(parser, default_arguments) {
     parser.add('s', "string").store(s).default_value("after");
 
     cpparg::test::args_builder builder("./program");
-    builder
-        .add("-i")
-        .add("--double")
-        .add("--string");
+    builder.add("-i").add("--double").add("--string");
     auto [argc, argv] = builder.get();
 
     parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow);
@@ -79,18 +74,13 @@ TEST(parser, handlers) {
 
     size_t calls = 0;
 
-    auto handler = [&](auto){
-        ++calls;
-    };
+    auto handler = [&](auto) { ++calls; };
     parser.add('i').handle<int>(handler).default_value(123);
     parser.add('d', "double").handle<int>(handler).default_value(1.41421356);
     parser.add('s', "string").handle<std::string>(handler).default_value("after");
 
     cpparg::test::args_builder builder("./program");
-    builder
-        .add("-i")
-        .add("--double")
-        .add("--string");
+    builder.add("-i").add("--double").add("--string");
     auto [argc, argv] = builder.get();
 
     parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow);
@@ -104,9 +94,9 @@ TEST(parser, free_arguments) {
 
     int sum = 0;
 
-    parser.add('i').handle([](auto){}).default_value(0);
-    parser.add('d', "double").handle([](auto){}).default_value(0);
-    parser.add('s', "string").handle([](auto){}).default_value(0);
+    parser.add('i').handle([](auto) {}).default_value(0);
+    parser.add('d', "double").handle([](auto) {}).default_value(0);
+    parser.add('s', "string").handle([](auto) {}).default_value(0);
     parser.free_arguments("numbers").unlimited().handle([&](const auto& files) {
         for (std::string_view v : files) {
             sum += cpparg::util::from_string<int>(v);
@@ -114,10 +104,7 @@ TEST(parser, free_arguments) {
     });
 
     cpparg::test::args_builder builder("./program");
-    builder
-        .add("-i")
-        .add("--double")
-        .add("123").add("15").add("1024");
+    builder.add("-i").add("--double").add("123").add("15").add("1024");
     auto [argc, argv] = builder.get();
 
     parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow);
@@ -131,9 +118,9 @@ TEST(parser, free_arguments_delimiter) {
 
     int sum = 0;
 
-    parser.add('i').handle([](auto){}).default_value(0);
-    parser.add('d', "double").handle([](auto){}).default_value(0);
-    parser.add('s', "string").handle([](auto){}).default_value(0);
+    parser.add('i').handle([](auto) {}).default_value(0);
+    parser.add('d', "double").handle([](auto) {}).default_value(0);
+    parser.add('s', "string").handle([](auto) {}).default_value(0);
     parser.free_arguments("numbers").unlimited().handle([&](const auto& files) {
         for (std::string_view v : files) {
             sum += cpparg::util::from_string<int>(v);
@@ -141,10 +128,7 @@ TEST(parser, free_arguments_delimiter) {
     });
 
     cpparg::test::args_builder builder("./program");
-    builder
-        .add("-i")
-        .add("--double")
-        .add("--").add("123").add("15").add("1024");
+    builder.add("-i").add("--double").add("--").add("123").add("15").add("1024");
     auto [argc, argv] = builder.get();
 
     parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow);
@@ -167,10 +151,7 @@ TEST(parser, positional) {
     parser.positional("default").store(x).default_value(-228);
 
     cpparg::test::args_builder builder("./program");
-    builder
-        .add("123")
-        .add("1.41421356")
-        .add("after");
+    builder.add("123").add("1.41421356").add("after");
     auto [argc, argv] = builder.get();
 
     parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow);
@@ -197,10 +178,7 @@ TEST(parser, flags) {
     parser.flag('f', "foo").store(f).default_value(true);
 
     cpparg::test::args_builder builder("./program");
-    builder
-        .add("--boo")
-        .add("-d")
-        .add("--foo");
+    builder.add("--boo").add("-d").add("--foo");
     auto [argc, argv] = builder.get();
 
     parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow);

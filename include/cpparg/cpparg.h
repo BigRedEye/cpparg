@@ -54,12 +54,12 @@ inline bool ends_with(std::string_view str, std::string_view suffix) {
            str.compare(str.size() - suffix.size(), std::string_view::npos, suffix) == 0;
 }
 
-template<typename ...Args>
+template<typename... Args>
 inline std::string join(Args&&... args) {
     return ("" + ... + to_string(args));
 }
 
-} // namespace string_utils
+} // namespace util
 
 namespace detail {
 
@@ -142,18 +142,16 @@ public:
         handler_ = std::forward<Handler>(handler);
 
         if (flag_) {
-            disable_flag_ = []{};
+            disable_flag_ = [] {};
         }
         return *this;
     }
 
     template<typename Arg, typename Handler>
     processor& handle(Handler&& handler) {
-        return handle(
-            [ handler{std::forward<Handler>(handler)} ] (std::string_view arg) {
-                handler(util::from_string<Arg>(arg));
-            }
-        );
+        return handle([handler{std::forward<Handler>(handler)}](std::string_view arg) {
+            handler(util::from_string<Arg>(arg));
+        });
     }
 
     processor& required() {
@@ -540,13 +538,14 @@ public:
         try {
             while (*++argv) {
                 detail::argument_parser arg_parser(*argv, next_positional, positional_.size());
-                if (arg_parser.type() == detail::argument_parser::arg_type::free_arg || was_free_arg_delimiter) {
+                if (arg_parser.type() == detail::argument_parser::arg_type::free_arg ||
+                    was_free_arg_delimiter) {
                     free_args.push_back(arg_parser.name());
                     continue;
                 }
 
                 std::optional<processor*> p;
-                auto try_to_find = [&] (const auto& map, const auto& name) -> decltype(p) {
+                auto try_to_find = [&](const auto& map, const auto& name) -> decltype(p) {
                     auto it = map.find(name);
                     if (it != map.end()) {
                         return it->second;
@@ -692,7 +691,7 @@ public:
     }
 
 private:
-    template<typename ...Args>
+    template<typename... Args>
     processor& create_processor(Args&&... args) {
         processors_.emplace_back(std::make_unique<processor>(std::forward<Args>(args)...));
         processor& result = *processors_.back();

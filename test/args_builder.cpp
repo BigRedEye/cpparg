@@ -22,4 +22,4 @@ std::tuple<int, const char**> args_builder::get() {
     return std::tuple(static_cast<int>(ptrs_.size()), ptrs_.data());
 }
 
-}
+} // namespace cpparg::test
