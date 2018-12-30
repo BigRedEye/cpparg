@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <functional>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -12,6 +13,7 @@
 #include <string>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -77,11 +79,21 @@ public:
     }
 };
 
+class parser_error : public std::runtime_error {
+public:
+    parser_error(const std::string& what_)
+        : std::runtime_error(what_) {
+    }
+};
+
 class processor {
 public:
     processor(size_t position, std::string_view name)
-        : lname_(name.begin(), name.end())
+        : lname_(util::str(name))
         , position_(position) {
+        if (util::starts_with(name, "-")) {
+            throw std::logic_error("Option name cannot start with '-'");
+        }
     }
 
     processor(std::string_view lname)
@@ -91,7 +103,16 @@ public:
     processor(char sname, std::string_view lname)
         : processor(lname) {
         sname_ = sname;
+        if (sname == '-') {
+            throw std::logic_error("Option name cannot start with '-'");
+        }
     }
+
+    processor(processor&& other) = default;
+    processor& operator=(processor&& other) = default;
+
+    processor(const processor& other) = delete;
+    processor& operator=(const processor& other) = delete;
 
     template<typename Val>
     processor& store(Val& val) {
@@ -119,7 +140,20 @@ public:
             std::is_invocable_v<Handler, std::string_view>,
             "Handler should take std::string_view as the first argument");
         handler_ = std::forward<Handler>(handler);
+
+        if (flag_) {
+            disable_flag_ = []{};
+        }
         return *this;
+    }
+
+    template<typename Arg, typename Handler>
+    processor& handle(Handler&& handler) {
+        return handle(
+            [ handler{std::forward<Handler>(handler)} ] (std::string_view arg) {
+                handler(util::from_string<Arg>(arg));
+            }
+        );
     }
 
     processor& required() {
@@ -132,19 +166,15 @@ public:
         return *this;
     }
 
-    processor& flag() {
-        flag_ = true;
-        return *this;
-    }
-
     processor& value_type(std::string_view type) {
         arg_type_ = util::str(type);
         return *this;
     }
 
-    processor& default_value(std::string_view default_val) {
+    template<typename T>
+    processor& default_value(T val) {
         has_default_value_ = true;
-        default_value_ = util::str(default_val);
+        default_value_ = util::to_string(val);
         return *this;
     }
 
@@ -156,23 +186,28 @@ public:
 private:
     friend class parser;
 
-    void parse(std::string_view arg = "") {
+    processor& flag() {
+        flag_ = true;
+        return *this;
+    }
+
+    void parse(std::string_view arg = "") const {
         if (!handler_) {
             throw std::logic_error(
                 "Cannot parse option " + name() +
                 ": the handler was not set. Use either store() or process().");
         }
-        if (arg.empty() && !has_default_value_) {
+        if (arg.empty() && !has_default_value_ && !flag_) {
             throw processor_error(name(), "argument required.");
         }
-        if (arg.empty()) {
+        if (arg.empty() && !flag_) {
             handler_(default_value_);
         } else {
             handler_(arg);
         }
     }
 
-    void empty_option_handler() {
+    void default_handler() const {
         if (required_) {
             throw processor_error("Option " + name() + " is required.");
         } else if (flag_) {
@@ -301,19 +336,18 @@ private:
     std::function<void()> disable_flag_;
 };
 
-class free_args_processor {
+class invalid_free_arguments_count : public processor_error {
 public:
-    class invalid_free_arguments_count : public std::runtime_error {
-    public:
-        invalid_free_arguments_count(size_t count, size_t maximum)
-            : std::runtime_error(util::join(
-                  "Invalid free arguments count, got ",
-                  count,
-                  " while maximum is ",
-                  maximum)) {
-        }
-    };
+    invalid_free_arguments_count(size_t count, size_t maximum)
+        : processor_error(util::join(
+              "Invalid free arguments count, got ",
+              count,
+              " while maximum is ",
+              maximum)) {
+    }
+};
 
+class free_args_processor {
 public:
     free_args_processor() = default;
 
@@ -391,7 +425,7 @@ namespace detail {
 
 class argument_parser {
 public:
-    enum class arg_type { positional, short_name, long_name, free_arg };
+    enum class arg_type { positional, short_name, long_name, free_arg, free_arg_delimiter };
 
     argument_parser(std::string_view arg, size_t position, size_t positional_count)
         : arg_(arg)
@@ -400,7 +434,12 @@ public:
 
     arg_type type() const {
         if (util::starts_with(arg_, "--")) {
-            return arg_type::long_name;
+            /* ./command ... -- free args */
+            if (arg_.size() == 2) {
+                return arg_type::free_arg_delimiter;
+            } else {
+                return arg_type::long_name;
+            }
         } else if (util::starts_with(arg_, "-")) {
             return arg_type::short_name;
         } else if (can_be_positilnal_) {
@@ -417,7 +456,7 @@ public:
         case arg_type::long_name:
             return arg_.substr(2);
         default:
-            return "";
+            return arg_;
         }
     }
 
@@ -428,11 +467,16 @@ private:
 
 } // namespace detail
 
+enum class parsing_error_policy {
+    exit,
+    rethrow,
+};
+
 class parser {
 public:
     parser(std::string_view program, std::string_view mode = "")
-        : program_(program.begin(), program.end())
-        , mode_(mode.begin(), mode.end()) {
+        : program_(util::str(program))
+        , mode_(util::str(mode)) {
     }
 
     parser& title(std::string_view v) {
@@ -448,10 +492,19 @@ public:
         return create_processor(sname, lname);
     }
 
+    processor& flag(std::string_view lname) {
+        return add(lname).flag();
+    }
+
+    processor& flag(char sname, std::string_view lname = "") {
+        return add(sname, lname).flag();
+    }
+
     processor& positional(std::string_view name) {
-        processors_.emplace_back(processors_.size(), name);
-        positional_.push_back(std::addressof(processors_.back()));
-        return processors_.back();
+        processors_.emplace_back(std::make_unique<processor>(positional_.size(), name));
+        processor& result = *processors_.back();
+        positional_.push_back(&result);
+        return result;
     }
 
     free_args_processor& free_arguments(std::string_view name) {
@@ -462,6 +515,7 @@ public:
         if (help_) {
             throw std::logic_error("Cannot add two help options");
         }
+
         processor& result = create_processor(sname, lname);
         result.description("print this help and exit").handle([this](std::string_view) {
             print_help();
@@ -473,42 +527,83 @@ public:
         return *this;
     }
 
-    void parse(int, const char* argv[]) {
+    void parse(int, const char* argv[], parsing_error_policy err = parsing_error_policy::exit) {
         size_t next_positional = 0;
         std::vector<std::string_view> free_args;
-        while (*++argv) {
-            detail::argument_parser arg_parser(*argv, next_positional, positional_.size());
-            if (arg_parser.type() == detail::argument_parser::arg_type::free_arg) {
-                free_args.push_back(arg_parser.name());
-                continue;
-            }
 
-            std::optional<processor> p;
-            auto try_to_find = [] (const auto& map, const auto& name) -> decltype(p) {
-                auto it = map.find(name);
-                if (it != map.end()) {
-                    return *it->second;
-                } else {
-                    return {};
+        std::unordered_set<const processor*> unused;
+        for (const auto& p : processors_) {
+            unused.insert(p.get());
+        }
+
+        bool was_free_arg_delimiter = false;
+        try {
+            while (*++argv) {
+                detail::argument_parser arg_parser(*argv, next_positional, positional_.size());
+                if (arg_parser.type() == detail::argument_parser::arg_type::free_arg || was_free_arg_delimiter) {
+                    free_args.push_back(arg_parser.name());
+                    continue;
                 }
-            };
 
-            switch (arg_parser.type()) {
-            case detail::argument_parser::arg_type::short_name:
-                p = try_to_find(short_, arg_parser.name()[0]);
-                break;
-            case detail::argument_parser::arg_type::long_name:
-                p = try_to_find(long_, util::str(arg_parser.name()));
-                break;
-            case detail::argument_parser::arg_type::positional:
-                p = *positional_[next_positional++];
-                break;
-            default:
-                break;
+                std::optional<processor*> p;
+                auto try_to_find = [&] (const auto& map, const auto& name) -> decltype(p) {
+                    auto it = map.find(name);
+                    if (it != map.end()) {
+                        return it->second;
+                    } else {
+                        return {};
+                    }
+                };
+
+                switch (arg_parser.type()) {
+                case detail::argument_parser::arg_type::short_name:
+                    p = try_to_find(short_, arg_parser.name()[0]);
+                    break;
+                case detail::argument_parser::arg_type::long_name:
+                    p = try_to_find(long_, util::str(arg_parser.name()));
+                    break;
+                case detail::argument_parser::arg_type::positional:
+                    p = positional_[next_positional++];
+                    break;
+                case detail::argument_parser::arg_type::free_arg_delimiter:
+                    was_free_arg_delimiter = true;
+                    continue;
+                default:
+                    break;
+                }
+
+                std::string_view arg = "";
+
+                const char* next = *(argv + 1);
+                if (arg_parser.type() == detail::argument_parser::arg_type::positional) {
+                    arg = arg_parser.name();
+                } else if (next) {
+                    if (!util::starts_with(next, "-")) {
+                        arg = next;
+                        ++argv;
+                    }
+                }
+
+                if (p) {
+                    (*p)->parse(arg);
+                } else {
+                    throw processor_error(util::join("Unknown option ", arg_parser.name(), "."));
+                }
+
+                unused.extract(*p);
             }
 
-            if (!p) {
-                exit_with_help(util::join("Unknown option ", arg_parser.name(), "."));
+            for (const processor* p : unused) {
+                p->default_handler();
+            }
+
+            free_args_processor_.parse(free_args);
+        } catch (const processor_error& error) {
+            switch (err) {
+            case parsing_error_policy::exit:
+                exit_with_help(error.what());
+            case parsing_error_policy::rethrow:
+                throw parser_error(error.what());
             }
         }
     }
@@ -535,7 +630,7 @@ public:
         std::vector<const processor*> sorted;
         std::transform(
             processors_.begin(), processors_.end(), std::back_inserter(sorted), [](const auto& p) {
-                return std::addressof(p);
+                return p.get();
             });
         std::sort(sorted.begin(), sorted.end(), [](const processor* lhs, const processor* rhs) {
             if (lhs->is_positional() != rhs->is_positional()) {
@@ -546,7 +641,7 @@ public:
         });
 
         if (help_) {
-            auto it = std::find(sorted.begin(), sorted.end(), help_);
+            auto it = std::find(sorted.begin(), sorted.end(), *help_);
             if (it != sorted.end()) {
                 sorted.erase(it);
             }
@@ -560,7 +655,7 @@ public:
 
         /* add help at first line */
         if (help_) {
-            sorted.insert(sorted.begin(), help_);
+            sorted.insert(sorted.begin(), *help_);
         }
 
         out << "\n\nOptions:\n";
@@ -599,21 +694,24 @@ public:
 private:
     template<typename ...Args>
     processor& create_processor(Args&&... args) {
-        processors_.emplace_back(std::forward<Args>(args)...);
-        processor& result = processors_.back();
+        processors_.emplace_back(std::make_unique<processor>(std::forward<Args>(args)...));
+        processor& result = *processors_.back();
 
         auto try_to_insert = [](auto& map, const auto& key, const auto& value) {
             auto it = map.find(key);
             if (it != map.end()) {
-                std::stringstream err;
-                err << "Cannot add option " << key << ": the name is already used";
-                throw std::logic_error(err.str());
+                throw std::logic_error(
+                    util::join("Cannot add option ", key, ": the name is already used"));
             }
             map.emplace(key, value);
         };
 
-        try_to_insert(long_, util::str(result.long_name()), &result);
-        try_to_insert(short_, result.short_name(), &result);
+        if (!result.long_name().empty()) {
+            try_to_insert(long_, util::str(result.long_name()), &result);
+        }
+        if (result.short_name() != processor::EMPTY_SHORT_NAME) {
+            try_to_insert(short_, result.short_name(), &result);
+        }
 
         return result;
     }
@@ -623,11 +721,11 @@ private:
     std::string mode_;
     std::string title_;
 
-    std::vector<processor> processors_;
+    std::vector<std::unique_ptr<processor>> processors_;
     std::vector<processor*> positional_;
     std::unordered_map<std::string, processor*> long_;
     std::unordered_map<char, processor*> short_;
-    processor* help_{nullptr};
+    std::optional<processor*> help_;
 
     free_args_processor free_args_processor_;
 };
