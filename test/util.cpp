@@ -1,5 +1,5 @@
-#include <gtest/gtest.h>
 #include <cpparg/cpparg.h>
+#include <gtest/gtest.h>
 
 namespace su = cpparg::util;
 
@@ -35,7 +35,7 @@ TEST(util, to_string) {
     EXPECT_EQ("c", su::to_string('c'));
     EXPECT_EQ("0.1", su::to_string(0.1));
     EXPECT_EQ("-123", su::to_string(-123));
-    EXPECT_EQ("15 3.14 name", su::to_string(dummy{ 15, 3.14, "name" }));
+    EXPECT_EQ("15 3.14 name", su::to_string(dummy{15, 3.14, "name"}));
 }
 
 TEST(util, from_string) {
@@ -44,7 +44,7 @@ TEST(util, from_string) {
     EXPECT_EQ('c', su::from_string<char>("c"));
     EXPECT_EQ(0.1, su::from_string<double>("0.1"));
     EXPECT_EQ(-123, su::from_string<int>("-123"));
-    EXPECT_EQ((dummy{ 15, 3.14, "name"}), su::from_string<dummy>("15 3.14 name"));
+    EXPECT_EQ((dummy{15, 3.14, "name"}), su::from_string<dummy>("15 3.14 name"));
 }
 
 TEST(util, starts_with) {
