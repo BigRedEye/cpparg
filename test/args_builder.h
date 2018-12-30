@@ -16,7 +16,6 @@ public:
     std::tuple<int, const char**> get();
 
 private:
-    std::vector<std::string> args_;
     std::vector<const char*> ptrs_;
 };
 
