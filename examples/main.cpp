@@ -3,9 +3,9 @@
 #include <string>
 #include <map>
 
-int main(int argc, const char** argv) {
-    cpparg::parser parser("test");
-    parser.title("cpparg-test -- test for cpparg.");
+int qmain(int argc, const char** argv) {
+    cpparg::parser parser("example");
+    parser.title("cpparg-example -- example usage of cpparg.");
     std::string s;
     parser.add('q', "qwe")
         .store(s)
@@ -30,4 +30,22 @@ int main(int argc, const char** argv) {
     parser.free_arguments("files").unlimited().store(free_args);
     parser.parse(argc, argv);
     parser.print_help();
+}
+
+int main(int argc, const char** argv) {
+    cpparg::parser parser("parser::flags test");
+    parser.title("Test flags");
+
+    bool a = true;
+    bool f = false;
+    bool d = false;
+    bool e = false;
+    parser.flag('a').store(a);
+    // parser.flag('b', "boo").handle([](auto) { std::cout << "WTF" << std::endl; });
+    parser.flag('c').handle([](auto) { std::cout << "WTF" << std::endl; });
+    parser.flag('d').store(d).default_value(true);
+    parser.flag('e').store(e).default_value(false);
+    parser.flag('f', "foo").store(f).default_value(true);
+
+    parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow);
 }

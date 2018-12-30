@@ -8,9 +8,8 @@ args_builder::args_builder(std::string_view name)
 }
 
 args_builder& args_builder::add(std::string_view arg) {
-    args_.emplace_back(arg.begin(), arg.end());
     ptrs_.pop_back();
-    ptrs_.emplace_back(args_.back().data());
+    ptrs_.emplace_back(arg.data());
     ptrs_.push_back(nullptr);
     return *this;
 }
