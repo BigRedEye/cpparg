@@ -22,5 +22,4 @@ script:
   - cd build
   - cmake .. -DCMAKE_BUILD_TYPE=Sanitizers -DBUILD_TESTS=ON -DBUILD_EXAMPLES=ON
   - cmake --build . --parallel $(nproc)
-  - examples/cpparg-examples; true
   - test/cpparg-test
