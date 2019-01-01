@@ -315,7 +315,7 @@ private:
 
 private:
     static constexpr char EMPTY_SHORT_NAME = '\0';
-    static constexpr size_t NON_POSITIONAL = 0;
+    static constexpr size_t NON_POSITIONAL = std::numeric_limits<size_t>::max();
 
     bool required_{false};
     bool flag_{false};
