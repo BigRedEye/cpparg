@@ -12,6 +12,7 @@
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -149,9 +150,23 @@ public:
 
     template<typename Arg, typename Handler>
     processor& handle(Handler&& handler) {
-        return handle([handler{std::forward<Handler>(handler)}](std::string_view arg) {
+        return handle([handler{std::forward<Handler>(handler)}](std::string_view arg) mutable {
             handler(util::from_string<Arg>(arg));
         });
+    }
+
+    template<
+        typename output_it,
+        std::enable_if_t<std::is_convertible_v<
+            std::output_iterator_tag,
+            typename std::iterator_traits<output_it>::iterator_category>>* = nullptr>
+    processor& append(output_it it) {
+        return append_impl<typename std::iterator_traits<output_it>::value_type>(it);
+    }
+
+    template<typename Container>
+    processor& append(Container& cont) {
+        return append_impl<int>(std::back_inserter(cont));
     }
 
     processor& required() {
@@ -161,6 +176,11 @@ public:
 
     processor& optional() {
         required_ = false;
+        return *this;
+    }
+
+    processor& repeatable() {
+        repeatable_ = true;
         return *this;
     }
 
@@ -220,6 +240,22 @@ private:
         }
     }
 
+    template<
+        typename arg_t,
+        typename output_it,
+        std::enable_if_t<std::is_convertible_v<
+            std::output_iterator_tag,
+            typename std::iterator_traits<output_it>::iterator_category>>* = nullptr>
+    processor& append_impl(output_it it) {
+        if (!is_repeatable()) {
+            throw std::logic_error(
+                "Cannot use append with non-repeatable processor; call repeatable() before "
+                "append()");
+        }
+
+        return handle<arg_t>([it](arg_t arg) mutable { *(it++) = std::move(arg); });
+    }
+
     char short_name() const {
         return sname_;
     }
@@ -245,6 +281,10 @@ private:
 
     bool is_positional() const {
         return position_ != NON_POSITIONAL;
+    }
+
+    bool is_repeatable() const {
+        return repeatable_;
     }
 
     std::string name() const {
@@ -284,6 +324,9 @@ private:
         if (has_default_value_ && !flag_) {
             result << " [default = " << default_value_ << "]";
         }
+        if (is_repeatable()) {
+            result << " (repeatable)";
+        }
 
         return result.str();
     }
@@ -319,6 +362,7 @@ private:
 
     bool required_{false};
     bool flag_{false};
+    bool repeatable_{false};
     bool has_default_value_{false};
 
     char sname_{EMPTY_SHORT_NAME};
@@ -589,7 +633,13 @@ public:
                     throw processor_error(util::join("Unknown option ", arg_parser.name(), "."));
                 }
 
-                unused.extract(*p);
+                auto it = unused.find(*p);
+                if (it == unused.end() && !(*p)->is_repeatable()) {
+                    throw processor_error(
+                        util::join("Option '", arg_parser.name(), "' is not repeatable"));
+                } else if (it != unused.end()) {
+                    unused.erase(it);
+                }
             }
 
             for (const processor* p : unused) {
@@ -607,9 +657,10 @@ public:
         }
     }
 
-    void exit_with_help(std::string_view error_message = "") const __attribute__((noreturn)) {
+    void exit_with_help(std::string_view error_message = "", int errc = 1) const
+        __attribute__((noreturn)) {
         print_help(error_message);
-        exit(1);
+        exit(errc);
     }
 
     std::string help_message(std::string_view error_message = "") const {

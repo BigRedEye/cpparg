@@ -1,7 +1,9 @@
+#include "args_builder.h"
 #include <cpparg/cpparg.h>
+
 #include <gtest/gtest.h>
 
-#include "args_builder.h"
+#include <numeric>
 
 TEST(parser, no_arguments) {
     cpparg::parser parser("parser::no_arguments test");
@@ -165,7 +167,7 @@ TEST(parser, positional) {
 TEST(parser, flags) {
     cpparg::parser parser("parser::flags test");
     parser.title("Test flags");
-
+    
     bool a = true;
     bool f = false;
     bool d = false;
@@ -187,4 +189,58 @@ TEST(parser, flags) {
     EXPECT_TRUE(d);
     EXPECT_FALSE(e);
     EXPECT_TRUE(f);
+}
+
+TEST(parser, nonrepeatable) {
+    cpparg::parser parser("parser::nonrepeatable test");
+    parser.title("Test repeating nonrepeatable argument");
+
+    parser.add("boo").description("do something").handle([](auto) {});
+
+    cpparg::test::args_builder builder("./program");
+    builder.add("--boo").add("--boo");
+    auto [argc, argv] = builder.get();
+
+    EXPECT_THROW(parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow), cpparg::parser_error);
+}
+
+TEST(parser, repeatable) {
+    cpparg::parser parser("parser::repeatable test");
+    parser.title("Test repeatable arguments");
+
+    unsigned calls = 0;
+
+    auto call = [&calls](auto) { ++calls; };
+
+    parser.add("inc").repeatable().description("increase counter").handle(call);
+
+    cpparg::test::args_builder builder("./program");
+    builder.add("--inc").add(" ").add("--inc").add(" ").add("--inc").add(" ");
+    auto [argc, argv] = builder.get();
+
+    EXPECT_NO_THROW(parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow));
+
+    EXPECT_EQ(calls, 3);
+}
+
+TEST(parser, appendNonrepeatable) {
+    cpparg::parser parser("parser::append_nonrepeatable test");
+
+    std::vector<int> v;
+
+    EXPECT_THROW(parser.add("int").description("add integer").append(v), std::logic_error);
+}
+
+TEST(parser, append) {
+    cpparg::parser parser("parser::append_nonrepeatable test");
+
+    std::vector<int> v;
+
+    EXPECT_NO_THROW(parser.add('i', "int").repeatable().description("add integer").append(v));
+
+    auto [argc, argv] =
+        cpparg::test::args_builder("./program").add("-i").add("123").add("-i").add("1000").add("-i").add("1").get();
+
+    EXPECT_NO_THROW(parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow));
+    EXPECT_EQ(std::accumulate(v.begin(), v.end(), 0), 1124);
 }
