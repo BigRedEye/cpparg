@@ -238,8 +238,9 @@ TEST(parser, append) {
 
     EXPECT_NO_THROW(parser.add('i', "int").repeatable().description("add integer").append(v));
 
-    auto [argc, argv] =
-        cpparg::test::args_builder("./program").add("-i").add("123").add("-i").add("1000").add("-i").add("1").get();
+    cpparg::test::args_builder builder("./program");
+    auto [argc, argv] = builder.add("-i").add("123").add("-i").add("1000").add("-i").add("1").get();
+
 
     EXPECT_NO_THROW(parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow));
     EXPECT_EQ(std::accumulate(v.begin(), v.end(), 0), 1124);
