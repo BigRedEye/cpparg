@@ -95,12 +95,12 @@ TEST(parser, handlers) {
     size_t calls = 0;
 
     auto handler = [&](auto) { ++calls; };
-    parser.add('i').handle<int>(handler).default_value(123);
-    parser.add('d', "double").handle<int>(handler).default_value(1.41421356);
-    parser.add('s', "string").handle<std::string>(handler).default_value("after");
+    parser.add('i').handle<int>(handler);
+    parser.add('d', "double").handle<int>(handler);
+    parser.add('s', "string").handle<std::string>(handler);
 
     cpparg::test::args_builder builder("./program");
-    builder.add("-i").add("--double").add("--string");
+    builder.add("-i", "123").add("--double", "1.41421356").add("--string", "after");
     auto [argc, argv] = builder.get();
 
     parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow);
@@ -124,7 +124,7 @@ TEST(parser, free_arguments) {
     });
 
     cpparg::test::args_builder builder("./program");
-    builder.add("-i").add("--double").add("123").add("15").add("1024");
+    builder.add("-i", "0").add("--double").add("123").add("15").add("1024");
     auto [argc, argv] = builder.get();
 
     parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow);
@@ -148,7 +148,7 @@ TEST(parser, free_arguments_delimiter) {
     });
 
     cpparg::test::args_builder builder("./program");
-    builder.add("-i").add("--double").add("--").add("123").add("15").add("1024");
+    builder.add("-i", "0").add("--double", "0").add("--").add("123").add("15").add("1024");
     auto [argc, argv] = builder.get();
 
     parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow);

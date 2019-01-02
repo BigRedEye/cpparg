@@ -89,8 +89,8 @@ TEST(command_parser, nested_parsers) {
 
             EXPECT_NO_THROW(args.parse(argc, argv, cpparg::parsing_error_policy::rethrow));
 
-            EXPECT_EQ(s, "");
-            EXPECT_EQ(i, 123);
+            EXPECT_EQ(s, "qwe");
+            EXPECT_EQ(i, 228);
         });
     parser
         .default_command("commit")
@@ -100,7 +100,7 @@ TEST(command_parser, nested_parsers) {
         });
 
     cpparg::test::args_builder builder("./program");
-    builder.add("test").add("--int");
+    builder.add("test").add("--int", "228");
     auto [argc, argv] = builder.get();
     ASSERT_NO_THROW(parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow));
 }

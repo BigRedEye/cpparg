@@ -261,6 +261,9 @@ public:
     processor& default_value(T val) {
         has_default_value_ = true;
         default_value_ = util::to_string(val);
+        if (default_value_.empty()) {
+            throw std::logic_error("Empty default value");
+        }
         return *this;
     }
 
@@ -283,11 +286,12 @@ private:
                 "Cannot parse option " + name() +
                 ": the handler was not set. Use either store() or process().");
         }
-        if (arg.empty() && !has_default_value_ && !flag_) {
-            throw processor_error(name(), "argument required.");
-        }
-        if (arg.empty() && !flag_) {
-            handler_(default_value_);
+        if (arg.empty()) {
+            if (flag_) {
+                handler_(arg);
+            } else {
+                throw processor_error(name(), "argument required.");
+            }
         } else {
             handler_(arg);
         }
@@ -304,7 +308,7 @@ private:
                 throw std::logic_error("Do not call store() before flag().");
             }
         } else if (has_default_value_) {
-            parse();
+            parse(default_value_);
         }
     }
 
