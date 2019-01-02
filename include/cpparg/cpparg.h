@@ -60,24 +60,29 @@ inline std::string join(Args&&... args) {
     return ("" + ... + to_string(args));
 }
 
+inline void normalize_tabs(std::vector<std::string>& vec, size_t tab_width) {
+    auto first_tab = [](const std::string& s) { return s.find_first_of('\t') + 1; };
+
+    auto it = std::max_element(
+        vec.begin(), vec.end(), [&](const std::string& lhs, const std::string& rhs) {
+            return first_tab(lhs) < first_tab(rhs);
+        });
+
+    size_t right = first_tab(*it);
+
+    for (auto& s : vec) {
+        size_t cur = s.find_first_of('\t');
+        if (cur != std::string::npos) {
+            s.replace(cur, 1, right - cur + tab_width, ' ');
+        }
+    }
+}
+
 } // namespace util
 
-namespace detail {
-
-static constexpr std::string_view OFFSET = "  ";
-static constexpr size_t TAB_WIDTH = 4;
-
-} // namespace detail
-
-class processor_error : public std::runtime_error {
-public:
-    processor_error(const std::string& what_)
-        : std::runtime_error(what_) {
-    }
-
-    processor_error(const std::string& name, const std::string& descr)
-        : std::runtime_error("Cannot parse option " + name + ": " + descr) {
-    }
+enum class parsing_error_policy {
+    exit,
+    rethrow,
 };
 
 class parser_error : public std::runtime_error {
@@ -86,6 +91,69 @@ public:
         : std::runtime_error(what_) {
     }
 };
+
+class processor_error : public parser_error {
+public:
+    processor_error(const std::string& what_)
+        : parser_error(what_) {
+    }
+
+    processor_error(const std::string& name, const std::string& descr)
+        : parser_error(util::join("Cannot parse option " + name + ": " + descr)) {
+    }
+};
+
+namespace detail {
+
+static constexpr std::string_view OFFSET = "  ";
+static constexpr size_t TAB_WIDTH = 4;
+
+template<typename Child>
+class parser_base {
+public:
+    std::string help_message(std::string_view error_message = "") const {
+        std::string help = static_cast<const Child*>(this)->help_message_impl();
+        if (error_message.empty()) {
+            error_message = title_;
+        }
+
+        return util::join(error_message, '\n', help);
+    }
+
+    void exit_with_help(std::string_view error_message = "", int errc = 1) const
+        __attribute__((noreturn)) {
+        print_help(error_message);
+        exit(errc);
+    }
+
+    void print_help(std::string_view error_message = "") const {
+        std::cerr << help_message(error_message) << std::endl;
+    }
+
+    Child& title(std::string_view v) {
+        title_ = util::str(v);
+        return static_cast<Child&>(*this);
+    }
+
+    int parse(int argc, const char* argv[], parsing_error_policy err = parsing_error_policy::exit)
+        const {
+        try {
+            return static_cast<const Child*>(this)->parse_impl(argc, argv);
+        } catch (const parser_error& error) {
+            switch (err) {
+            case parsing_error_policy::exit:
+                exit_with_help(error.what());
+            case parsing_error_policy::rethrow:
+                throw;
+            }
+        }
+    }
+
+private:
+    std::string title_;
+};
+
+} // namespace detail
 
 class processor {
 public:
@@ -426,7 +494,7 @@ public:
         return *this;
     }
 
-    void parse(const std::vector<std::string_view>& args) {
+    void parse(const std::vector<std::string_view>& args) const {
         if (args.size() > max_count_) {
             throw invalid_free_arguments_count(args.size(), max_count_);
         }
@@ -509,21 +577,10 @@ private:
 
 } // namespace detail
 
-enum class parsing_error_policy {
-    exit,
-    rethrow,
-};
-
-class parser {
+class parser : public detail::parser_base<parser> {
 public:
-    parser(std::string_view program, std::string_view mode = "")
-        : program_(util::str(program))
-        , mode_(util::str(mode)) {
-    }
-
-    parser& title(std::string_view v) {
-        title_ = util::str(v);
-        return *this;
+    parser(std::string_view program)
+        : program_(util::str(program)) {
     }
 
     processor& add(std::string_view lname) {
@@ -569,7 +626,7 @@ public:
         return *this;
     }
 
-    void parse(int, const char* argv[], parsing_error_policy err = parsing_error_policy::exit) {
+    int parse_impl(int, const char* argv[]) const {
         size_t next_positional = 0;
         std::vector<std::string_view> free_args;
 
@@ -579,102 +636,82 @@ public:
         }
 
         bool was_free_arg_delimiter = false;
-        try {
-            while (*++argv) {
-                detail::argument_parser arg_parser(*argv, next_positional, positional_.size());
-                if (arg_parser.type() == detail::argument_parser::arg_type::free_arg ||
-                    was_free_arg_delimiter) {
-                    free_args.push_back(arg_parser.name());
-                    continue;
-                }
 
-                std::optional<processor*> p;
-                auto try_to_find = [&](const auto& map, const auto& name) -> decltype(p) {
-                    auto it = map.find(name);
-                    if (it != map.end()) {
-                        return it->second;
-                    } else {
-                        return {};
-                    }
-                };
+        while (*++argv) {
+            detail::argument_parser arg_parser(*argv, next_positional, positional_.size());
+            if (arg_parser.type() == detail::argument_parser::arg_type::free_arg ||
+                was_free_arg_delimiter) {
+                free_args.push_back(arg_parser.name());
+                continue;
+            }
 
-                switch (arg_parser.type()) {
-                case detail::argument_parser::arg_type::short_name:
-                    p = try_to_find(short_, arg_parser.name()[0]);
-                    break;
-                case detail::argument_parser::arg_type::long_name:
-                    p = try_to_find(long_, util::str(arg_parser.name()));
-                    break;
-                case detail::argument_parser::arg_type::positional:
-                    p = positional_[next_positional++];
-                    break;
-                case detail::argument_parser::arg_type::free_arg_delimiter:
-                    was_free_arg_delimiter = true;
-                    continue;
-                default:
-                    break;
-                }
-
-                std::string_view arg = "";
-
-                const char* next = *(argv + 1);
-                if (arg_parser.type() == detail::argument_parser::arg_type::positional) {
-                    arg = arg_parser.name();
-                } else if (next) {
-                    if (!util::starts_with(next, "-")) {
-                        arg = next;
-                        ++argv;
-                    }
-                }
-
-                if (p) {
-                    (*p)->parse(arg);
+            std::optional<processor*> p;
+            auto try_to_find = [&](const auto& map, const auto& name) -> decltype(p) {
+                auto it = map.find(name);
+                if (it != map.end()) {
+                    return it->second;
                 } else {
-                    throw processor_error(util::join("Unknown option ", arg_parser.name(), "."));
+                    return {};
                 }
+            };
 
-                auto it = unused.find(*p);
-                if (it == unused.end() && !(*p)->is_repeatable()) {
-                    throw processor_error(
-                        util::join("Option '", arg_parser.name(), "' is not repeatable"));
-                } else if (it != unused.end()) {
-                    unused.erase(it);
+            switch (arg_parser.type()) {
+            case detail::argument_parser::arg_type::short_name:
+                p = try_to_find(short_, arg_parser.name()[0]);
+                break;
+            case detail::argument_parser::arg_type::long_name:
+                p = try_to_find(long_, util::str(arg_parser.name()));
+                break;
+            case detail::argument_parser::arg_type::positional:
+                p = positional_[next_positional++];
+                break;
+            case detail::argument_parser::arg_type::free_arg_delimiter:
+                was_free_arg_delimiter = true;
+                continue;
+            default:
+                break;
+            }
+
+            std::string_view arg = "";
+
+            const char* next = *(argv + 1);
+            if (arg_parser.type() == detail::argument_parser::arg_type::positional) {
+                arg = arg_parser.name();
+            } else if (next) {
+                if (!util::starts_with(next, "-")) {
+                    arg = next;
+                    ++argv;
                 }
             }
 
-            for (const processor* p : unused) {
-                p->default_handler();
+            if (p) {
+                (*p)->parse(arg);
+            } else {
+                throw processor_error(util::join("Unknown option ", arg_parser.name(), "."));
             }
 
-            free_args_processor_.parse(free_args);
-        } catch (const processor_error& error) {
-            switch (err) {
-            case parsing_error_policy::exit:
-                exit_with_help(error.what());
-            case parsing_error_policy::rethrow:
-                throw parser_error(error.what());
+            auto it = unused.find(*p);
+            if (it == unused.end() && !(*p)->is_repeatable()) {
+                throw processor_error(
+                    util::join("Option '", arg_parser.name(), "' is not repeatable"));
+            } else if (it != unused.end()) {
+                unused.erase(it);
             }
         }
+
+        for (const processor* p : unused) {
+            p->default_handler();
+        }
+
+        free_args_processor_.parse(free_args);
+
+        return 0;
     }
 
-    void exit_with_help(std::string_view error_message = "", int errc = 1) const
-        __attribute__((noreturn)) {
-        print_help(error_message);
-        exit(errc);
-    }
-
-    std::string help_message(std::string_view error_message = "") const {
+    std::string help_message_impl() const {
         std::stringstream out;
 
-        if (!error_message.empty()) {
-            out << error_message << "\n";
-        } else {
-            out << title_ << "\n";
-        }
         out << "\nUsage:\n" << detail::OFFSET << program_;
-        if (!mode_.empty()) {
-            out << ' ' << mode_;
-        }
 
         /* put required arguments first */
         std::vector<const processor*> sorted;
@@ -714,31 +751,12 @@ public:
         std::transform(sorted.begin(), sorted.end(), std::back_inserter(opts), [](auto p) {
             return p->help();
         });
-        auto normailze_tabs = [&opts]() {
-            size_t right = 0;
-            for (auto& s : opts) {
-                size_t cur = s.find_first_of('\t');
-                if (cur != std::string::npos) {
-                    right = std::max(cur, right);
-                }
-            }
-            for (auto& s : opts) {
-                size_t cur = s.find_first_of('\t');
-                if (cur != std::string::npos) {
-                    s.replace(cur, 1, right - cur + detail::TAB_WIDTH, ' ');
-                }
-            }
-        };
-        normailze_tabs();
+        util::normalize_tabs(opts, detail::TAB_WIDTH);
         for (auto& s : opts) {
             out << s << std::endl;
         }
 
         return out.str();
-    }
-
-    void print_help(std::string_view error_message = "") const {
-        std::cerr << help_message(error_message) << std::endl;
     }
 
 private:
@@ -748,12 +766,11 @@ private:
         processor& result = *processors_.back();
 
         auto try_to_insert = [](auto& map, const auto& key, const auto& value) {
-            auto it = map.find(key);
-            if (it != map.end()) {
+            auto [it, inserted] = map.emplace(key, value);
+            if (!inserted) {
                 throw std::logic_error(
                     util::join("Cannot add option ", key, ": the name is already used"));
             }
-            map.emplace(key, value);
         };
 
         if (!result.long_name().empty()) {
@@ -768,7 +785,6 @@ private:
 
 private:
     std::string program_;
-    std::string mode_;
     std::string title_;
 
     std::vector<std::unique_ptr<processor>> processors_;
@@ -778,6 +794,154 @@ private:
     std::optional<processor*> help_;
 
     free_args_processor free_args_processor_;
+};
+
+class command_handler {
+public:
+    command_handler(std::string_view name, bool is_default = true)
+        : name_(util::str(name))
+        , default_(is_default) {
+    }
+
+    template<typename F>
+    command_handler& handle(F&& f) {
+        using Result = std::invoke_result_t<F, int, const char*[]>;
+        using IsVoid = std::is_same<std::decay_t<Result>, void>;
+
+        static_assert(
+            std::is_convertible_v<Result, int> || IsVoid::value,
+            "Command handler should return either int or void");
+
+        if constexpr (IsVoid::value) {
+            handler_ = [func{std::forward<F>(f)}](int argc, const char* argv[]) -> int {
+                func(argc, argv);
+                return 0;
+            };
+        } else {
+            handler_ = std::forward<F>(f);
+        }
+        return *this;
+    }
+
+    command_handler& description(std::string_view descr) {
+        description_ = util::str(descr);
+        return *this;
+    }
+
+    int operator()(int argc, const char* argv[]) const {
+        return handler_(argc, argv);
+    }
+
+private:
+    friend class command_parser;
+
+    std::string help() const {
+        std::string suffix = is_default() ? util::str(" [default]") : util::str("");
+        return util::join(detail::OFFSET, name_, '\t', description_, suffix);
+    }
+
+    bool is_default() const {
+        return default_;
+    }
+
+private:
+    using command_func = std::function<int(int, const char*[])>;
+
+    command_func handler_;
+    std::string description_;
+    std::string name_;
+    bool default_;
+};
+
+class command_parser : public detail::parser_base<command_parser> {
+public:
+    command_parser(std::string_view name)
+        : name_(util::str(name)) {
+    }
+
+    command_handler& command(std::string_view name) {
+        if (name.empty()) {
+            throw std::logic_error(util::join("Command name cannot be empty"));
+        }
+        return command_impl(name, false);
+    }
+
+    command_handler& default_command(std::string_view name) {
+        if (default_) {
+            throw std::logic_error("Cannot add two default commands");
+        }
+        command_handler& result = command_impl(name, true);
+        default_ = &result;
+        return result;
+    }
+
+    int parse_impl(int argc, const char* argv[]) const {
+        std::string_view cmd = "";
+        if (argc > 1) {
+            cmd = argv[1];
+        }
+
+        auto it = command_by_name_.find(util::str(cmd));
+        if (it == command_by_name_.end()) {
+            if (cmd.empty()) {
+                throw parser_error("Command name is required.");
+            } else {
+                throw parser_error(util::join("Unknown command '", cmd, "'."));
+            }
+        }
+
+        return (*it->second)(argc - 1, argv + 1);
+    }
+
+    std::string help_message_impl() const {
+        std::stringstream out;
+
+        out << "\nUsage:\n" << detail::OFFSET << name_ << " <command> <command args>";
+
+        out << "\n\nCommands:\n";
+
+        std::vector<std::string> cmds;
+
+        cmds.reserve(commands_.size());
+        for (auto& ptr : commands_) {
+            if (ptr->is_default()) {
+                cmds.insert(cmds.begin(), ptr->help());
+            } else {
+                cmds.push_back(ptr->help());
+            }
+        }
+
+        util::normalize_tabs(cmds, detail::TAB_WIDTH);
+
+        for (auto& s : cmds) {
+            out << s << std::endl;
+        }
+
+        return out.str();
+    }
+
+private:
+    command_handler& command_impl(std::string_view name = "", bool is_default = false) {
+        commands_.emplace_back(std::make_unique<command_handler>(name, is_default));
+        command_handler& result = *commands_.back();
+
+        auto [it, inserted] = command_by_name_.emplace(util::str(name), &result);
+        if (!inserted) {
+            throw std::logic_error(util::join("Multiple commands with same name '", name, "'"));
+        }
+
+        if (is_default) {
+            command_by_name_.emplace("", &result);
+        }
+
+        return result;
+    }
+
+private:
+    std::string name_;
+    std::vector<std::unique_ptr<command_handler>> commands_;
+    std::unordered_map<std::string, command_handler*> command_by_name_;
+    std::optional<command_handler*> default_;
 };
 
 } // namespace cpparg

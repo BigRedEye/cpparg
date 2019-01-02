@@ -47,7 +47,7 @@ TEST(parser, numbers_parsing) {
     EXPECT_DOUBLE_EQ(d, 1.41421356);
 }
 
-TEST(parser, default_arguments) {
+TEST(parser, bad_default_arguments) {
     cpparg::parser parser("parser::default_arguments test");
     parser.title("Test parser with default arguments");
 
@@ -63,7 +63,25 @@ TEST(parser, default_arguments) {
     builder.add("-i").add("--double").add("--string");
     auto [argc, argv] = builder.get();
 
-    parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow);
+    EXPECT_THROW(parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow), cpparg::parser_error);
+}
+
+TEST(parser, default_arguments) {
+    cpparg::parser parser("parser::default_arguments test");
+    parser.title("Test parser with default arguments");
+
+    unsigned i = 0xdeadface;
+    double d = 3.141592653589;
+    std::string s = "before";
+
+    parser.add('i').store(i).default_value(228);
+    parser.add('d', "double").store(d).default_value("1.41421356");
+    parser.add('s', "string").store(s).default_value("after");
+
+    cpparg::test::args_builder builder("./program");
+    auto [argc, argv] = builder.get();
+
+    EXPECT_NO_THROW(parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow));
 
     EXPECT_EQ(i, 228);
     EXPECT_DOUBLE_EQ(d, 1.41421356);

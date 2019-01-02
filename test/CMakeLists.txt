@@ -11,6 +11,7 @@ include(Sanitizers)
 file(GLOB SOURCES
     main.cpp
     parser.cpp
+    command_parser.cpp
     util.cpp
     args_builder.cpp
 )
