@@ -1,7 +1,9 @@
+#include "args_builder.h"
 #include <cpparg/cpparg.h>
+
 #include <gtest/gtest.h>
 
-#include "args_builder.h"
+#include <numeric>
 
 TEST(parser, no_arguments) {
     cpparg::parser parser("parser::no_arguments test");
@@ -45,7 +47,7 @@ TEST(parser, numbers_parsing) {
     EXPECT_DOUBLE_EQ(d, 1.41421356);
 }
 
-TEST(parser, default_arguments) {
+TEST(parser, bad_default_arguments) {
     cpparg::parser parser("parser::default_arguments test");
     parser.title("Test parser with default arguments");
 
@@ -61,7 +63,25 @@ TEST(parser, default_arguments) {
     builder.add("-i").add("--double").add("--string");
     auto [argc, argv] = builder.get();
 
-    parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow);
+    EXPECT_THROW(parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow), cpparg::parser_error);
+}
+
+TEST(parser, default_arguments) {
+    cpparg::parser parser("parser::default_arguments test");
+    parser.title("Test parser with default arguments");
+
+    unsigned i = 0xdeadface;
+    double d = 3.141592653589;
+    std::string s = "before";
+
+    parser.add('i').store(i).default_value(228);
+    parser.add('d', "double").store(d).default_value("1.41421356");
+    parser.add('s', "string").store(s).default_value("after");
+
+    cpparg::test::args_builder builder("./program");
+    auto [argc, argv] = builder.get();
+
+    EXPECT_NO_THROW(parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow));
 
     EXPECT_EQ(i, 228);
     EXPECT_DOUBLE_EQ(d, 1.41421356);
@@ -75,12 +95,12 @@ TEST(parser, handlers) {
     size_t calls = 0;
 
     auto handler = [&](auto) { ++calls; };
-    parser.add('i').handle<int>(handler).default_value(123);
-    parser.add('d', "double").handle<int>(handler).default_value(1.41421356);
-    parser.add('s', "string").handle<std::string>(handler).default_value("after");
+    parser.add('i').handle<int>(handler);
+    parser.add('d', "double").handle<int>(handler);
+    parser.add('s', "string").handle<std::string>(handler);
 
     cpparg::test::args_builder builder("./program");
-    builder.add("-i").add("--double").add("--string");
+    builder.add("-i", "123").add("--double", "1.41421356").add("--string", "after");
     auto [argc, argv] = builder.get();
 
     parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow);
@@ -104,7 +124,7 @@ TEST(parser, free_arguments) {
     });
 
     cpparg::test::args_builder builder("./program");
-    builder.add("-i").add("--double").add("123").add("15").add("1024");
+    builder.add("-i", "0").add("--double").add("123").add("15").add("1024");
     auto [argc, argv] = builder.get();
 
     parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow);
@@ -128,7 +148,7 @@ TEST(parser, free_arguments_delimiter) {
     });
 
     cpparg::test::args_builder builder("./program");
-    builder.add("-i").add("--double").add("--").add("123").add("15").add("1024");
+    builder.add("-i", "0").add("--double", "0").add("--").add("123").add("15").add("1024");
     auto [argc, argv] = builder.get();
 
     parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow);
@@ -165,7 +185,7 @@ TEST(parser, positional) {
 TEST(parser, flags) {
     cpparg::parser parser("parser::flags test");
     parser.title("Test flags");
-
+    
     bool a = true;
     bool f = false;
     bool d = false;
@@ -187,4 +207,59 @@ TEST(parser, flags) {
     EXPECT_TRUE(d);
     EXPECT_FALSE(e);
     EXPECT_TRUE(f);
+}
+
+TEST(parser, nonrepeatable) {
+    cpparg::parser parser("parser::nonrepeatable test");
+    parser.title("Test repeating nonrepeatable argument");
+
+    parser.add("boo").description("do something").handle([](auto) {});
+
+    cpparg::test::args_builder builder("./program");
+    builder.add("--boo").add("--boo");
+    auto [argc, argv] = builder.get();
+
+    EXPECT_THROW(parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow), cpparg::parser_error);
+}
+
+TEST(parser, repeatable) {
+    cpparg::parser parser("parser::repeatable test");
+    parser.title("Test repeatable arguments");
+
+    unsigned calls = 0;
+
+    auto call = [&calls](auto) { ++calls; };
+
+    parser.add("inc").repeatable().description("increase counter").handle(call);
+
+    cpparg::test::args_builder builder("./program");
+    builder.add("--inc").add(" ").add("--inc").add(" ").add("--inc").add(" ");
+    auto [argc, argv] = builder.get();
+
+    EXPECT_NO_THROW(parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow));
+
+    EXPECT_EQ(calls, 3);
+}
+
+TEST(parser, appendNonrepeatable) {
+    cpparg::parser parser("parser::append_nonrepeatable test");
+
+    std::vector<int> v;
+
+    EXPECT_THROW(parser.add("int").description("add integer").append(v), std::logic_error);
+}
+
+TEST(parser, append) {
+    cpparg::parser parser("parser::append_nonrepeatable test");
+
+    std::vector<int> v;
+
+    EXPECT_NO_THROW(parser.add('i', "int").repeatable().description("add integer").append(v));
+
+    cpparg::test::args_builder builder("./program");
+    auto [argc, argv] = builder.add("-i").add("123").add("-i").add("1000").add("-i").add("1").get();
+
+
+    EXPECT_NO_THROW(parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow));
+    EXPECT_EQ(std::accumulate(v.begin(), v.end(), 0), 1124);
 }

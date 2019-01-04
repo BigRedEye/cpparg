@@ -10,34 +10,47 @@ Yet another single header command line arguments parser.
 
 ```cpp
 #include <cpparg/cpparg.h>
+#include <filesystem>
 
 int main(int argc, const char** argv) {
-    cpparg::parser parser("Example");
+    cpparg::parser parser("./example");
     parser.title("Some title");
     std::string name;
-    parser.add('n', "name")
+    parser
+        .add('n', "name")
         .store(name)
-        .default_value("Bob")
+        .optional()
         .value_type("STRING")
+        .default_value("Bob")
         .description("Bob's name");
-    parser.add('a', "add")
-        .handle([](std::string_view v) { std::cout << v << std::endl; })
-        .required()
-        .value_type("FILE")
-        .description("Add files to commit");
     int i;
-    parser.positional("i")
-        .store(i)
+    parser
+        .positional("i")
         .required()
+        .description("Positional interger")
         .value_type("INTEGER")
-        .description("Positional interger");
-    parser.add("delete").value_type("DIR").description("Directory to directory");
+        .store(i);
+    parser
+        .add("delete")
+        .value_type("DIR")
+        .description("Directory to delete")
+        .handle([](std::string_view dir) {
+            std::filesystem::remove(dir);
+        });
     std::vector<int> free_args;
-    parser.free_arguments("files").unlimited().store(free_args);
+    parser
+        .free_arguments("ints")
+        .unlimited()
+        .store(free_args);
     parser.add_help('h', "help");
     parser.parse(argc, argv);
 }
 ```
+
+## Requirements
+
++ Compiler with C++17 support
++ CMake (optional)
 
 ## Installation
 
@@ -52,12 +65,12 @@ git clone https://github.com/BigRedEye/cpparg.git
 ```
 add_subdirectory(cpparg)
 
-target_link_libraries(YOUR_TARGET cpparg)
+target_link_libraries(YOUR_TARGET PUBLIC cpparg)
 ```
 
 ##### Manual
 
-Just put [cpparg.h](include/cpparg/cpparg.h) somewhere inside your build tree and include it.
+Put [cpparg.h](include/cpparg/cpparg.h) somewhere inside your build tree and include it.
 
 ## Usage
 

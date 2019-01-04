@@ -5,11 +5,13 @@ project(cpparg-test)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-include(cmake/DownloadGoogleTest.cmake)
+include(DownloadGoogleTest)
+include(Sanitizers)
 
 file(GLOB SOURCES
     main.cpp
     parser.cpp
+    command_parser.cpp
     util.cpp
     args_builder.cpp
 )
