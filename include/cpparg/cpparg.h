@@ -620,7 +620,7 @@ public:
         }
 
         processor& result = create_processor(sname, lname);
-        result.description("print this help and exit").handle([this](std::string_view) {
+        result.description("Print this help and exit").handle([this](std::string_view) {
             print_help();
             exit(0);
         });
