@@ -625,7 +625,7 @@ public:
 
         processor& result = create_processor(sname, lname);
         result.no_argument().description("Print this help and exit").handle([this](std::string_view) {
-            exit_with_help();
+            exit_with_help("", 0);
         });
 
         help_ = &result;
