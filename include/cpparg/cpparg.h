@@ -234,7 +234,7 @@ public:
 
     template<typename Container>
     processor& append(Container& cont) {
-        return append_impl<int>(std::back_inserter(cont));
+        return append_impl<std::decay_t<decltype(*cont.begin())>>(std::back_inserter(cont));
     }
 
     processor& required() {

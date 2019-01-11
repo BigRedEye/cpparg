@@ -263,3 +263,18 @@ TEST(parser, append) {
     EXPECT_NO_THROW(parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow));
     EXPECT_EQ(std::accumulate(v.begin(), v.end(), 0), 1124);
 }
+
+TEST(parser, append_strings) {
+    cpparg::parser parser("parser::append_strings test");
+
+    std::vector<std::string> v;
+
+    EXPECT_NO_THROW(parser.add('s', "string").repeatable().description("add string").append(v));
+
+    cpparg::test::args_builder builder("./program");
+    auto [argc, argv] = builder.add("-s").add("qwe123").add("-s").add("1000").add("-s").add("STRINGS!").get();
+
+
+    EXPECT_NO_THROW(parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow));
+    EXPECT_EQ(std::accumulate(v.begin(), v.end(), std::string{}), "qwe1231000STRINGS!");
+}
