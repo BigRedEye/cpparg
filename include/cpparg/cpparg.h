@@ -251,6 +251,11 @@ public:
         repeatable_ = true;
         return *this;
     }
+    
+    processor& no_argument() {
+        argument_required_ = false;
+        return *this;
+    }
 
     processor& value_type(std::string_view type) {
         arg_type_ = util::str(type);
@@ -277,7 +282,7 @@ private:
 
     processor& flag() {
         flag_ = true;
-        return *this;
+        return no_argument();
     }
 
     void parse(std::string_view arg = "") const {
@@ -286,15 +291,13 @@ private:
                 "Cannot parse option " + name() +
                 ": the handler was not set. Use either store() or process().");
         }
-        if (arg.empty()) {
-            if (flag_) {
-                handler_(arg);
-            } else {
-                throw processor_error(name(), "argument required.");
-            }
-        } else {
-            handler_(arg);
+        if (arg.empty() && argument_required_) {
+            throw processor_error(name(), "argument required.");
         }
+        if (!arg.empty() && !argument_required_) {
+            throw processor_error(name(), "requires no argument.");
+        }
+        handler_(arg);
     }
 
     void default_handler() const {
@@ -436,6 +439,7 @@ private:
     bool flag_{false};
     bool repeatable_{false};
     bool has_default_value_{false};
+    bool argument_required_{true};
 
     char sname_{EMPTY_SHORT_NAME};
     std::string lname_;
@@ -620,9 +624,8 @@ public:
         }
 
         processor& result = create_processor(sname, lname);
-        result.description("Print this help and exit").handle([this](std::string_view) {
-            print_help();
-            exit(0);
+        result.no_argument().description("Print this help and exit").handle([this](std::string_view) {
+            exit_with_help();
         });
 
         help_ = &result;
