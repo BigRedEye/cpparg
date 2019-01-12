@@ -28,22 +28,32 @@ inline std::string str(std::string_view view) {
 
 template<typename T>
 inline T from_string(std::string_view s) {
-    static std::istringstream ss;
-    ss.exceptions(std::istringstream::failbit);
-    ss.clear();
-    ss.str(str(s));
-    T result;
-    ss >> result;
-    return result;
+    if constexpr (std::is_same_v<std::string, T>) {
+        return str(s);
+    } else if constexpr (std::is_same_v<std::string_view, T>) {
+        return s;
+    } else {
+        static std::istringstream ss;
+        ss.exceptions(std::istringstream::failbit);
+        ss.clear();
+        ss.str(str(s));
+        T result;
+        ss >> result;
+        return result;
+    }
 }
 
 template<typename T>
 inline std::string to_string(T&& t) {
-    static std::ostringstream os;
-    os.clear();
-    os.str("");
-    os << t;
-    return os.str();
+    if constexpr (std::is_same_v<std::string, std::decay_t<T>>) {
+        return t;
+    } else {
+        static std::ostringstream os;
+        os.clear();
+        os.str("");
+        os << t;
+        return os.str();
+    }
 }
 
 inline bool starts_with(std::string_view str, std::string_view prefix) {
