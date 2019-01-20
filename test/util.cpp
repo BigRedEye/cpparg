@@ -64,3 +64,19 @@ TEST(util, ends_with) {
     EXPECT_FALSE(su::ends_with("abc  c", " cd"));
     EXPECT_FALSE(su::ends_with("", "cd"));
 }
+
+struct non_serializable {};
+
+TEST(util, is_convertible_from_string) {
+    static_assert(cpparg::util::detail::is_convertible_from_string_v<int>, "");
+    static_assert(cpparg::util::detail::is_convertible_from_string_v<double>, "");
+    static_assert(cpparg::util::detail::is_convertible_from_string_v<char>, "");
+    static_assert(cpparg::util::detail::is_convertible_from_string_v<std::string>, "");
+    static_assert(cpparg::util::detail::is_convertible_from_string_v<std::string_view>, "");
+    static_assert(cpparg::util::detail::is_convertible_from_string_v<dummy>, "");
+
+    static_assert(!cpparg::util::detail::is_convertible_from_string_v<non_serializable>, "");
+    static_assert(!cpparg::util::detail::is_convertible_from_string_v<std::vector<char>>, "");
+    static_assert(!cpparg::util::detail::is_convertible_from_string_v<std::pair<int, int>>, "");
+    static_assert(!cpparg::util::detail::is_convertible_from_string_v<void>, "");
+}

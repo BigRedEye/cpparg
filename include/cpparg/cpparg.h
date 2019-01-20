@@ -26,8 +26,36 @@ inline std::string str(std::string_view view) {
     return std::string(view.begin(), view.end());
 }
 
+namespace detail {
+
+template<typename T>
+using istream_read_t = decltype(std::declval<std::istream&>() >> std::declval<T&>());
+
+template<typename T, typename U = istream_read_t<T>>
+std::true_type test(T);
+
+std::true_type test(std::string);
+std::true_type test(std::string_view);
+
+template<typename ...Args>
+std::false_type test(Args...);
+
+template<typename T>
+struct is_convertible_from_string : decltype(test(std::declval<T>())) {};
+
+template<>
+struct is_convertible_from_string<void> : std::false_type {};
+
+template<typename T>
+inline constexpr bool is_convertible_from_string_v = is_convertible_from_string<T>::value;
+
+}
+
 template<typename T>
 inline T from_string(std::string_view s) {
+    static_assert(detail::is_convertible_from_string_v<T>,
+        "Cannot find std::istream& operator>>(std::istream&, T&)");
+
     if constexpr (std::is_same_v<std::string, T>) {
         return str(s);
     } else if constexpr (std::is_same_v<std::string_view, T>) {
@@ -157,6 +185,9 @@ public:
                 throw;
             }
         }
+
+        /* suppress warnings */
+        return 0;
     }
 
 private:
@@ -215,10 +246,23 @@ public:
 
     template<typename Handler>
     processor& handle(Handler&& handler) {
+        static constexpr bool takes_string_view = std::is_invocable_v<Handler, std::string_view>;
+        static constexpr bool takes_string = std::is_invocable_v<Handler, std::string>;
+        static constexpr bool takes_void = std::is_invocable_v<Handler>;
         static_assert(
-            std::is_invocable_v<Handler, std::string_view>,
-            "Handler should take std::string_view as the first argument");
-        handler_ = std::forward<Handler>(handler);
+            takes_string_view || takes_string || takes_void,
+            "Handler should take std::string_view, std::string or void as the first argument");
+        if constexpr (takes_string_view) {
+            handler_ = std::forward<Handler>(handler);
+        } else if constexpr (takes_string) {
+            handler_ = [handler{std::forward<Handler>(handler)}](std::string_view arg) mutable {
+                handler(util::str(arg));
+            };
+        } else {
+            handler_ = [handler{std::forward<Handler>(handler)}](std::string_view) mutable {
+                handler();
+            };
+        }
 
         if (flag_) {
             disable_flag_ = [] {};
@@ -822,14 +866,14 @@ public:
 
     template<typename F>
     command_handler& handle(F&& f) {
-        using Result = std::invoke_result_t<F, int, const char*[]>;
-        using IsVoid = std::is_same<std::decay_t<Result>, void>;
+        using result_t = std::invoke_result_t<F, int, const char*[]>;
+        using is_void_t = std::is_same<std::decay_t<result_t>, void>;
 
         static_assert(
-            std::is_convertible_v<Result, int> || IsVoid::value,
+            std::is_convertible_v<result_t, int> || is_void_t::value,
             "Command handler should return either int or void");
 
-        if constexpr (IsVoid::value) {
+        if constexpr (is_void_t::value) {
             handler_ = [func{std::forward<F>(f)}](int argc, const char* argv[]) -> int {
                 func(argc, argv);
                 return 0;
