@@ -227,20 +227,12 @@ public:
     template<typename Val>
     processor& store(Val& val) {
         handler_ = [this, &val](std::string_view sv) {
-            if (flag_) {
-                /* --flag anything */
-                val = true;
-            } else {
-                try {
-                    val = util::from_string<Val>(sv);
-                } catch (std::ios_base::failure& fail) {
-                    throw processor_error(name(), fail.what());
-                }
+            try {
+                val = util::from_string<Val>(sv);
+            } catch (std::ios_base::failure& fail) {
+                throw processor_error(name(), fail.what());
             }
         };
-        if (flag_) {
-            disable_flag_ = [&val] { val = false; };
-        }
         return *this;
     }
 
@@ -264,9 +256,6 @@ public:
             };
         }
 
-        if (flag_) {
-            disable_flag_ = [] {};
-        }
         return *this;
     }
 
@@ -307,7 +296,7 @@ public:
     }
     
     processor& no_argument() {
-        argument_required_ = false;
+        has_argument_ = false;
         return *this;
     }
 
@@ -334,22 +323,14 @@ public:
 private:
     friend class parser;
 
-    processor& flag() {
-        flag_ = true;
-        return no_argument();
-    }
-
     void parse(std::string_view arg = "") const {
         if (!handler_) {
             throw std::logic_error(
                 "Cannot parse option " + name() +
-                ": the handler was not set. Use either store() or process().");
+                ": the handler was not set. Use either store() or handle().");
         }
-        if (arg.empty() && argument_required_) {
+        if (arg.empty() && has_argument_) {
             throw processor_error(name(), "argument required.");
-        }
-        if (!arg.empty() && !argument_required_) {
-            throw processor_error(name(), "requires no argument.");
         }
         handler_(arg);
     }
@@ -357,13 +338,6 @@ private:
     void default_handler() const {
         if (required_) {
             throw processor_error("Option " + name() + " is required.");
-        } else if (flag_) {
-            if (disable_flag_) {
-                disable_flag_();
-            } else {
-                /* flag() was called after store() */
-                throw std::logic_error("Do not call store() before flag().");
-            }
         } else if (has_default_value_) {
             parse(default_value_);
         }
@@ -394,9 +368,6 @@ private:
     }
 
     std::string_view type() const {
-        if (flag_) {
-            return "flag";
-        }
         return arg_type_;
     }
 
@@ -450,7 +421,7 @@ private:
         }
         result << '\t';
         result << description_;
-        if (has_default_value_ && !flag_) {
+        if (has_default_value_) {
             result << " [default = " << default_value_ << "]";
         }
         if (is_repeatable()) {
@@ -475,7 +446,7 @@ private:
                 result << "--" << lname_;
             }
         }
-        if (!flag_ && !arg_type_.empty()) {
+        if (has_argument_ && !arg_type_.empty()) {
             result << " <" << arg_type_ << ">";
         }
         if (is_optional()) {
@@ -490,10 +461,9 @@ private:
     static constexpr size_t NON_POSITIONAL = std::numeric_limits<size_t>::max();
 
     bool required_{false};
-    bool flag_{false};
     bool repeatable_{false};
     bool has_default_value_{false};
-    bool argument_required_{true};
+    bool has_argument_{true};
 
     char sname_{EMPTY_SHORT_NAME};
     std::string lname_;
@@ -505,7 +475,6 @@ private:
     std::string default_value_;
 
     std::function<void(std::string_view)> handler_;
-    std::function<void()> disable_flag_;
 };
 
 class invalid_free_arguments_count : public processor_error {
@@ -651,14 +620,6 @@ public:
 
     processor& add(char sname, std::string_view lname = "") {
         return create_processor(sname, lname);
-    }
-
-    processor& flag(std::string_view lname) {
-        return add(lname).flag();
-    }
-
-    processor& flag(char sname, std::string_view lname = "") {
-        return add(sname, lname).flag();
     }
 
     processor& positional(std::string_view name) {

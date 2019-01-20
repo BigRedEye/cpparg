@@ -182,33 +182,6 @@ TEST(parser, positional) {
     EXPECT_EQ(x, -228);
 }
 
-TEST(parser, flags) {
-    cpparg::parser parser("parser::flags test");
-    parser.title("Test flags");
-    
-    bool a = true;
-    bool f = false;
-    bool d = false;
-    bool e = false;
-    parser.flag('a').store(a);
-    parser.flag('b', "boo").handle([](auto) { ASSERT_TRUE(true); });
-    parser.flag('c').handle([](auto) { ASSERT_FALSE(true); });
-    parser.flag('d').store(d).default_value(true);
-    parser.flag('e').store(e).default_value(false);
-    parser.flag('f', "foo").store(f).default_value(true);
-
-    cpparg::test::args_builder builder("./program");
-    builder.add("--boo").add("-d").add("--foo");
-    auto [argc, argv] = builder.get();
-
-    parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow);
-
-    EXPECT_FALSE(a);
-    EXPECT_TRUE(d);
-    EXPECT_FALSE(e);
-    EXPECT_TRUE(f);
-}
-
 TEST(parser, nonrepeatable) {
     cpparg::parser parser("parser::nonrepeatable test");
     parser.title("Test repeating nonrepeatable argument");
