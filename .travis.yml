@@ -20,6 +20,6 @@ install:
 script:
   - mkdir build
   - cd build
-  - cmake .. -DCMAKE_BUILD_TYPE=Sanitizers -DBUILD_TESTS=ON -DBUILD_EXAMPLES=ON
+  - cmake .. -DCMAKE_BUILD_TYPE=Sanitizers -DCPPARG_BUILD_TESTS=ON -DCPPARG_BUILD_EXAMPLES=ON
   - cmake --build . --parallel $(nproc)
   - test/cpparg-test

@@ -22,13 +22,13 @@ target_include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include/
 )
 
-option(BUILD_TESTS "Build tests" OFF)
-if (${BUILD_TESTS})
+option(CPPARG_BUILD_TESTS "Build tests" OFF)
+if (${CPPARG_BUILD_TESTS})
     enable_testing()
     add_subdirectory(test)
 endif()
 
-option(BUILD_EXAMPLES "Build examples" OFF)
-if (${BUILD_EXAMPLES})
+option(CPPARG_BUILD_EXAMPLES "Build examples" OFF)
+if (${CPPARG_BUILD_EXAMPLES})
     add_subdirectory(examples)
 endif()
