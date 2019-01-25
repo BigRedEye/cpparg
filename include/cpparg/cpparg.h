@@ -387,6 +387,10 @@ private:
         return repeatable_;
     }
 
+    bool has_argument() const {
+        return has_argument_;
+    }
+
     std::string name() const {
         if (lname_.empty()) {
             /* option has only short name */
@@ -694,23 +698,25 @@ public:
                 break;
             }
 
+            if (!p) {
+                throw processor_error(util::join("Unknown option ", arg_parser.name(), "."));
+            }
+
             std::string_view arg = "";
 
-            const char* next = *(argv + 1);
-            if (arg_parser.type() == detail::argument_parser::arg_type::positional) {
-                arg = arg_parser.name();
-            } else if (next) {
-                if (!util::starts_with(next, "-")) {
-                    arg = next;
-                    ++argv;
+            if ((*p)->has_argument()) {
+                const char* next = *(argv + 1);
+                if (arg_parser.type() == detail::argument_parser::arg_type::positional) {
+                    arg = arg_parser.name();
+                } else if (next) {
+                    if (!util::starts_with(next, "-")) {
+                        arg = next;
+                        ++argv;
+                    }
                 }
             }
 
-            if (p) {
-                (*p)->parse(arg);
-            } else {
-                throw processor_error(util::join("Unknown option ", arg_parser.name(), "."));
-            }
+            (*p)->parse(arg);
 
             auto it = unused.find(*p);
             if (it == unused.end() && !(*p)->is_repeatable()) {
