@@ -62,9 +62,9 @@ inline T from_string(std::string_view s) {
         return s;
     } else {
         static std::istringstream ss;
-        ss.exceptions(std::istringstream::failbit);
         ss.clear();
         ss.str(str(s));
+        ss.exceptions(std::istringstream::failbit);
         T result;
         ss >> result;
         return result;
