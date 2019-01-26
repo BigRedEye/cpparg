@@ -12,6 +12,7 @@ file(GLOB HEADERS
 )
 
 add_library(${PROJECT_NAME} INTERFACE)
+add_library(cpparg::cpparg ALIAS ${PROJECT_NAME})
 
 target_sources(${PROJECT_NAME} INTERFACE
     ${HEADERS}
