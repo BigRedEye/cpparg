@@ -158,8 +158,7 @@ public:
         return util::join(error_message, '\n', help);
     }
 
-    void exit_with_help(std::string_view error_message = "", int errc = 1) const
-        __attribute__((noreturn)) {
+	[[noreturn]] void exit_with_help(std::string_view error_message = "", int errc = 1) const {
         print_help(error_message);
         exit(errc);
     }
