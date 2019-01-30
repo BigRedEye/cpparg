@@ -672,13 +672,11 @@ public:
             }
 
             std::optional<processor*> p;
-            auto try_to_find = [&](const auto& map, const auto& name) -> decltype(p) {
-                auto it = map.find(name);
-                if (it != map.end()) {
+            auto try_to_find = [p](const auto& map, const auto& name) -> decltype(p) {
+                if (auto it = map.find(name); it != map.end()) {
                     return it->second;
-                } else {
-                    return {};
                 }
+                return std::nullopt;
             };
 
             switch (arg_parser.type()) {
