@@ -96,7 +96,7 @@ TEST(parser, handlers) {
 
     auto handler = [&](auto) { ++calls; };
     parser.add('i').handle<int>(handler);
-    parser.add('d', "double").handle<int>(handler);
+    parser.add('d', "double").handle<double>(handler);
     parser.add('s', "string").handle<std::string>(handler);
 
     cpparg::test::args_builder builder("./program");

@@ -72,11 +72,14 @@ inline T from_string(std::string_view s) {
         static std::istringstream ss;
         ss.clear();
         ss.str(str(s));
-        ss.exceptions(std::istringstream::failbit | std::istringstream::badbit);
         T result;
         ss >> result;
 
-        if (!ss.eof()) {
+        if (!ss) {
+            throw from_string_error{};
+        }
+
+        if (ss.peek() != std::char_traits<char>::eof()) {
             throw from_string_error{};
         }
 

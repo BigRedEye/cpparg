@@ -44,6 +44,7 @@ TEST(util, from_string) {
     EXPECT_EQ('c', su::from_string<char>("c"));
     EXPECT_EQ(0.1, su::from_string<double>("0.1"));
     EXPECT_EQ(-123, su::from_string<int>("-123"));
+    EXPECT_THROW(su::from_string<int>("123.123"), cpparg::util::from_string_error);
 
     EXPECT_EQ((dummy{15, 3.14, "name"}), su::from_string<dummy>("15 3.14 name"));
 }
