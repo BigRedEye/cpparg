@@ -52,6 +52,13 @@ inline constexpr bool is_convertible_from_string_v = is_convertible_from_string<
 
 }
 
+class from_string_error : public std::runtime_error {
+public:
+    from_string_error()
+        : std::runtime_error("Cannot parse from string") {
+    }
+};
+
 template<typename T>
 inline T from_string(std::string_view s) {
     static_assert(detail::is_convertible_from_string_v<T>,
@@ -65,9 +72,14 @@ inline T from_string(std::string_view s) {
         static std::istringstream ss;
         ss.clear();
         ss.str(str(s));
-        ss.exceptions(std::istringstream::failbit);
+        ss.exceptions(std::istringstream::failbit | std::istringstream::badbit);
         T result;
         ss >> result;
+
+        if (!ss.eof()) {
+            throw from_string_error{};
+        }
+
         return result;
     }
 }
