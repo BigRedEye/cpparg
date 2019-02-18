@@ -241,9 +241,16 @@ public:
 
     template<typename Val>
     processor& store(Val& val) {
-        handler_ = [this, &val](std::string_view sv) {
+        return store<Val, Val>(val);
+    }
+
+    template<typename Val, typename Dest>
+    processor& store(Dest& dest) {
+        static_assert(std::is_assignable_v<Val&, Dest>, "Invalid store() value type");
+
+        handler_ = [this, &dest](std::string_view sv) {
             try {
-                val = util::from_string<Val>(sv);
+                dest = util::from_string<Val>(sv);
             } catch (std::ios_base::failure& fail) {
                 throw processor_error(name(), fail.what());
             }
