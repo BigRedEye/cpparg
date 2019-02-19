@@ -694,7 +694,8 @@ public:
             }
 
             std::optional<processor*> p;
-            auto try_to_find = [p](const auto& map, const auto& name) -> decltype(p) {
+            // Cannot use decltype(p) due to MSVC bug
+            auto try_to_find = [](const auto& map, const auto& name) -> std::optional<processor*> {
                 if (auto it = map.find(name); it != map.end()) {
                     return it->second;
                 }
