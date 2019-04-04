@@ -11,6 +11,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <type_traits>
 #include <unordered_map>
@@ -26,24 +27,77 @@ inline std::string str(std::string_view view) {
     return std::string(view.begin(), view.end());
 }
 
+namespace detail {
+
+template<typename T>
+using istream_read_t = decltype(std::declval<std::istream&>() >> std::declval<T&>());
+
+template<typename T, typename U = istream_read_t<T>>
+std::true_type test(T);
+
+std::true_type test(std::string);
+std::true_type test(std::string_view);
+
+template<typename ...Args>
+std::false_type test(Args...);
+
+template<typename T>
+struct is_convertible_from_string : decltype(test(std::declval<T>())) {};
+
+template<>
+struct is_convertible_from_string<void> : std::false_type {};
+
+template<typename T>
+inline constexpr bool is_convertible_from_string_v = is_convertible_from_string<T>::value;
+
+}
+
+class from_string_error : public std::runtime_error {
+public:
+    from_string_error()
+        : std::runtime_error("Cannot parse from string") {
+    }
+};
+
 template<typename T>
 inline T from_string(std::string_view s) {
-    static std::istringstream ss;
-    ss.exceptions(std::istringstream::failbit);
-    ss.clear();
-    ss.str(str(s));
-    T result;
-    ss >> result;
-    return result;
+    static_assert(detail::is_convertible_from_string_v<T>,
+        "Cannot find std::istream& operator>>(std::istream&, T&)");
+
+    if constexpr (std::is_same_v<std::string, T>) {
+        return str(s);
+    } else if constexpr (std::is_same_v<std::string_view, T>) {
+        return s;
+    } else {
+        static std::istringstream ss;
+        ss.clear();
+        ss.str(str(s));
+        T result;
+        ss >> result;
+
+        if (!ss) {
+            throw from_string_error{};
+        }
+
+        if (ss.peek() != std::char_traits<char>::eof()) {
+            throw from_string_error{};
+        }
+
+        return result;
+    }
 }
 
 template<typename T>
 inline std::string to_string(T&& t) {
-    static std::ostringstream os;
-    os.clear();
-    os.str("");
-    os << t;
-    return os.str();
+    if constexpr (std::is_same_v<std::string, std::decay_t<T>>) {
+        return t;
+    } else {
+        static std::ostringstream os;
+        os.clear();
+        os.str("");
+        os << t;
+        return os.str();
+    }
 }
 
 inline bool starts_with(std::string_view str, std::string_view prefix) {
@@ -120,8 +174,7 @@ public:
         return util::join(error_message, '\n', help);
     }
 
-    void exit_with_help(std::string_view error_message = "", int errc = 1) const
-        __attribute__((noreturn)) {
+	[[noreturn]] void exit_with_help(std::string_view error_message = "", int errc = 1) const {
         print_help(error_message);
         exit(errc);
     }
@@ -147,6 +200,9 @@ public:
                 throw;
             }
         }
+
+        /* suppress warnings */
+        return 0;
     }
 
 private:
@@ -185,34 +241,43 @@ public:
 
     template<typename Val>
     processor& store(Val& val) {
-        handler_ = [this, &val](std::string_view sv) {
-            if (flag_) {
-                /* --flag anything */
-                val = true;
-            } else {
-                try {
-                    val = util::from_string<Val>(sv);
-                } catch (std::ios_base::failure& fail) {
-                    throw processor_error(name(), fail.what());
-                }
+        return store<Val, Val>(val);
+    }
+
+    template<typename Val, typename Dest>
+    processor& store(Dest& dest) {
+        static_assert(std::is_assignable_v<Val&, Dest>, "Invalid store() value type");
+
+        handler_ = [this, &dest](std::string_view sv) {
+            try {
+                dest = util::from_string<Val>(sv);
+            } catch (std::ios_base::failure& fail) {
+                throw processor_error(name(), fail.what());
             }
         };
-        if (flag_) {
-            disable_flag_ = [&val] { val = false; };
-        }
         return *this;
     }
 
     template<typename Handler>
     processor& handle(Handler&& handler) {
+        static constexpr bool takes_string_view = std::is_invocable_v<Handler, std::string_view>;
+        static constexpr bool takes_string = std::is_invocable_v<Handler, std::string>;
+        static constexpr bool takes_void = std::is_invocable_v<Handler>;
         static_assert(
-            std::is_invocable_v<Handler, std::string_view>,
-            "Handler should take std::string_view as the first argument");
-        handler_ = std::forward<Handler>(handler);
-
-        if (flag_) {
-            disable_flag_ = [] {};
+            takes_string_view || takes_string || takes_void,
+            "Handler should take std::string_view, std::string or void as the first argument");
+        if constexpr (takes_string_view) {
+            handler_ = std::forward<Handler>(handler);
+        } else if constexpr (takes_string) {
+            handler_ = [handler{std::forward<Handler>(handler)}](std::string_view arg) mutable {
+                handler(util::str(arg));
+            };
+        } else {
+            handler_ = [handler{std::forward<Handler>(handler)}](std::string_view) mutable {
+                handler();
+            };
         }
+
         return *this;
     }
 
@@ -234,7 +299,7 @@ public:
 
     template<typename Container>
     processor& append(Container& cont) {
-        return append_impl<int>(std::back_inserter(cont));
+        return append_impl<std::decay_t<decltype(*cont.begin())>>(std::back_inserter(cont));
     }
 
     processor& required() {
@@ -249,6 +314,11 @@ public:
 
     processor& repeatable() {
         repeatable_ = true;
+        return *this;
+    }
+    
+    processor& no_argument() {
+        has_argument_ = false;
         return *this;
     }
 
@@ -275,38 +345,21 @@ public:
 private:
     friend class parser;
 
-    processor& flag() {
-        flag_ = true;
-        return *this;
-    }
-
     void parse(std::string_view arg = "") const {
         if (!handler_) {
             throw std::logic_error(
                 "Cannot parse option " + name() +
-                ": the handler was not set. Use either store() or process().");
+                ": the handler was not set. Use either store() or handle().");
         }
-        if (arg.empty()) {
-            if (flag_) {
-                handler_(arg);
-            } else {
-                throw processor_error(name(), "argument required.");
-            }
-        } else {
-            handler_(arg);
+        if (arg.empty() && has_argument_) {
+            throw processor_error(name(), "argument required.");
         }
+        handler_(arg);
     }
 
     void default_handler() const {
         if (required_) {
             throw processor_error("Option " + name() + " is required.");
-        } else if (flag_) {
-            if (disable_flag_) {
-                disable_flag_();
-            } else {
-                /* flag() was called after store() */
-                throw std::logic_error("Do not call store() before flag().");
-            }
         } else if (has_default_value_) {
             parse(default_value_);
         }
@@ -337,9 +390,6 @@ private:
     }
 
     std::string_view type() const {
-        if (flag_) {
-            return "flag";
-        }
         return arg_type_;
     }
 
@@ -357,6 +407,10 @@ private:
 
     bool is_repeatable() const {
         return repeatable_;
+    }
+
+    bool has_argument() const {
+        return has_argument_;
     }
 
     std::string name() const {
@@ -393,7 +447,7 @@ private:
         }
         result << '\t';
         result << description_;
-        if (has_default_value_ && !flag_) {
+        if (has_default_value_) {
             result << " [default = " << default_value_ << "]";
         }
         if (is_repeatable()) {
@@ -418,7 +472,7 @@ private:
                 result << "--" << lname_;
             }
         }
-        if (!flag_ && !arg_type_.empty()) {
+        if (has_argument_ && !arg_type_.empty()) {
             result << " <" << arg_type_ << ">";
         }
         if (is_optional()) {
@@ -433,9 +487,9 @@ private:
     static constexpr size_t NON_POSITIONAL = std::numeric_limits<size_t>::max();
 
     bool required_{false};
-    bool flag_{false};
     bool repeatable_{false};
     bool has_default_value_{false};
+    bool has_argument_{true};
 
     char sname_{EMPTY_SHORT_NAME};
     std::string lname_;
@@ -447,7 +501,6 @@ private:
     std::string default_value_;
 
     std::function<void(std::string_view)> handler_;
-    std::function<void()> disable_flag_;
 };
 
 class invalid_free_arguments_count : public processor_error {
@@ -595,14 +648,6 @@ public:
         return create_processor(sname, lname);
     }
 
-    processor& flag(std::string_view lname) {
-        return add(lname).flag();
-    }
-
-    processor& flag(char sname, std::string_view lname = "") {
-        return add(sname, lname).flag();
-    }
-
     processor& positional(std::string_view name) {
         processors_.emplace_back(std::make_unique<processor>(positional_.size(), name));
         processor& result = *processors_.back();
@@ -620,9 +665,8 @@ public:
         }
 
         processor& result = create_processor(sname, lname);
-        result.description("Print this help and exit").handle([this](std::string_view) {
-            print_help();
-            exit(0);
+        result.no_argument().description("Print this help and exit").handle([this](std::string_view) {
+            exit_with_help("", 0);
         });
 
         help_ = &result;
@@ -650,13 +694,12 @@ public:
             }
 
             std::optional<processor*> p;
-            auto try_to_find = [&](const auto& map, const auto& name) -> decltype(p) {
-                auto it = map.find(name);
-                if (it != map.end()) {
+            // Cannot use decltype(p) due to MSVC bug
+            auto try_to_find = [](const auto& map, const auto& name) -> std::optional<processor*> {
+                if (auto it = map.find(name); it != map.end()) {
                     return it->second;
-                } else {
-                    return {};
                 }
+                return std::nullopt;
             };
 
             switch (arg_parser.type()) {
@@ -676,23 +719,25 @@ public:
                 break;
             }
 
+            if (!p) {
+                throw processor_error(util::join("Unknown option ", arg_parser.name(), "."));
+            }
+
             std::string_view arg = "";
 
-            const char* next = *(argv + 1);
-            if (arg_parser.type() == detail::argument_parser::arg_type::positional) {
-                arg = arg_parser.name();
-            } else if (next) {
-                if (!util::starts_with(next, "-")) {
-                    arg = next;
-                    ++argv;
+            if ((*p)->has_argument()) {
+                const char* next = *(argv + 1);
+                if (arg_parser.type() == detail::argument_parser::arg_type::positional) {
+                    arg = arg_parser.name();
+                } else if (next) {
+                    if (!util::starts_with(next, "-")) {
+                        arg = next;
+                        ++argv;
+                    }
                 }
             }
 
-            if (p) {
-                (*p)->parse(arg);
-            } else {
-                throw processor_error(util::join("Unknown option ", arg_parser.name(), "."));
-            }
+            (*p)->parse(arg);
 
             auto it = unused.find(*p);
             if (it == unused.end() && !(*p)->is_repeatable()) {
@@ -809,14 +854,14 @@ public:
 
     template<typename F>
     command_handler& handle(F&& f) {
-        using Result = std::invoke_result_t<F, int, const char*[]>;
-        using IsVoid = std::is_same<std::decay_t<Result>, void>;
+        using result_t = std::invoke_result_t<F, int, const char*[]>;
+        using is_void_t = std::is_same<std::decay_t<result_t>, void>;
 
         static_assert(
-            std::is_convertible_v<Result, int> || IsVoid::value,
+            std::is_convertible_v<result_t, int> || is_void_t::value,
             "Command handler should return either int or void");
 
-        if constexpr (IsVoid::value) {
+        if constexpr (is_void_t::value) {
             handler_ = [func{std::forward<F>(f)}](int argc, const char* argv[]) -> int {
                 func(argc, argv);
                 return 0;

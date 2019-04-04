@@ -96,7 +96,7 @@ TEST(parser, handlers) {
 
     auto handler = [&](auto) { ++calls; };
     parser.add('i').handle<int>(handler);
-    parser.add('d', "double").handle<int>(handler);
+    parser.add('d', "double").handle<double>(handler);
     parser.add('s', "string").handle<std::string>(handler);
 
     cpparg::test::args_builder builder("./program");
@@ -182,33 +182,6 @@ TEST(parser, positional) {
     EXPECT_EQ(x, -228);
 }
 
-TEST(parser, flags) {
-    cpparg::parser parser("parser::flags test");
-    parser.title("Test flags");
-    
-    bool a = true;
-    bool f = false;
-    bool d = false;
-    bool e = false;
-    parser.flag('a').store(a);
-    parser.flag('b', "boo").handle([](auto) { ASSERT_TRUE(true); });
-    parser.flag('c').handle([](auto) { ASSERT_FALSE(true); });
-    parser.flag('d').store(d).default_value(true);
-    parser.flag('e').store(e).default_value(false);
-    parser.flag('f', "foo").store(f).default_value(true);
-
-    cpparg::test::args_builder builder("./program");
-    builder.add("--boo").add("-d").add("--foo");
-    auto [argc, argv] = builder.get();
-
-    parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow);
-
-    EXPECT_FALSE(a);
-    EXPECT_TRUE(d);
-    EXPECT_FALSE(e);
-    EXPECT_TRUE(f);
-}
-
 TEST(parser, nonrepeatable) {
     cpparg::parser parser("parser::nonrepeatable test");
     parser.title("Test repeating nonrepeatable argument");
@@ -262,4 +235,19 @@ TEST(parser, append) {
 
     EXPECT_NO_THROW(parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow));
     EXPECT_EQ(std::accumulate(v.begin(), v.end(), 0), 1124);
+}
+
+TEST(parser, append_strings) {
+    cpparg::parser parser("parser::append_strings test");
+
+    std::vector<std::string> v;
+
+    EXPECT_NO_THROW(parser.add('s', "string").repeatable().description("add string").append(v));
+
+    cpparg::test::args_builder builder("./program");
+    auto [argc, argv] = builder.add("-s").add("qwe123").add("-s").add("1000").add("-s").add("STRINGS!").get();
+
+
+    EXPECT_NO_THROW(parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow));
+    EXPECT_EQ(std::accumulate(v.begin(), v.end(), std::string{}), "qwe1231000STRINGS!");
 }
