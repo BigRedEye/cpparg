@@ -115,6 +115,10 @@ inline std::string join(Args&&... args) {
 }
 
 inline void normalize_tabs(std::vector<std::string>& vec, size_t tab_width) {
+    if (vec.empty()) {
+        return;
+    }
+
     auto first_tab = [](const std::string& s) { return s.find_first_of('\t') + 1; };
 
     auto it = std::max_element(
