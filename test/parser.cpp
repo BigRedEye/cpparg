@@ -251,3 +251,45 @@ TEST(parser, append_strings) {
     EXPECT_NO_THROW(parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow));
     EXPECT_EQ(std::accumulate(v.begin(), v.end(), std::string{}), "qwe1231000STRINGS!");
 }
+
+TEST(parser, flag) {
+    cpparg::parser parser("parser::flag test");
+
+    bool flags[] = {false, true, false, true};
+
+    EXPECT_NO_THROW(parser.add('a').description("flag a").flag(flags[0]));
+    EXPECT_NO_THROW(parser.add('b').description("flag b").flag(flags[1]));
+    EXPECT_NO_THROW(parser.add('c').description("flag c").flag(flags[2]));
+    EXPECT_NO_THROW(parser.add('d').description("flag d").flag(flags[3]));
+
+    cpparg::test::args_builder builder("./program");
+    auto [argc, argv] = builder.add("-c").add("-d").get();
+
+    EXPECT_NO_THROW(parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow));
+
+    EXPECT_EQ(flags[0], false);
+    EXPECT_EQ(flags[1], false);
+    EXPECT_EQ(flags[2], true);
+    EXPECT_EQ(flags[3], true);
+}
+
+TEST(parser, store_value) {
+    cpparg::parser parser("parser::store_value test");
+
+    int i{0};
+    double d{1.41421356};
+    std::string s{"qwe"};
+
+    EXPECT_NO_THROW(parser.add('i').store_value(i, -123));
+    EXPECT_NO_THROW(parser.add('d').store_value(d, 3.1415926));
+    EXPECT_NO_THROW(parser.add('s').store_value(s, "str"));
+
+    cpparg::test::args_builder builder("./program");
+    auto [argc, argv] = builder.add("-d").add("-i").get();
+
+    EXPECT_NO_THROW(parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow));
+
+    EXPECT_EQ(i, -123);
+    EXPECT_DOUBLE_EQ(d, 3.1415926);
+    EXPECT_EQ(s, "qwe");
+}
