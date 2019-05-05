@@ -262,6 +262,29 @@ public:
         return *this;
     }
 
+    template<typename Dest, typename Val>
+    processor& store_value(Dest& dest, Val&& val) {
+        static_assert(std::is_assignable_v<Dest&, Val>, "Invalid store_value() value type");
+
+        no_argument();
+
+        handler_ = [&dest, val{std::forward<Val>(val)}](auto) {
+            dest = val;
+        };
+
+        return *this;
+    }
+
+    processor& flag(bool& flag) {
+        no_argument().optional().default_value("disable");
+
+        handler_ = [&flag](std::string_view sv) {
+            flag = sv.empty();
+        };
+
+        return *this;
+    }
+
     template<typename Handler>
     processor& handle(Handler&& handler) {
         static constexpr bool takes_string_view = std::is_invocable_v<Handler, std::string_view>;
