@@ -22,6 +22,7 @@ TEST(command_parser, simple) {
     cpparg::test::args_builder builder("./program");
     builder.add("commit");
     auto [argc, argv] = builder.get();
+    ASSERT_NE(argv, nullptr);
     ASSERT_EQ(parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow), 123);
 }
 

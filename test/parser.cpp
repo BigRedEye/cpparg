@@ -293,3 +293,19 @@ TEST(parser, store_value) {
     EXPECT_DOUBLE_EQ(d, 3.1415926);
     EXPECT_EQ(s, "qwe");
 }
+
+TEST(parser, explicit_store) {
+    cpparg::parser parser("parser::explicit_store test");
+    parser.title("Test parser with explicit store");
+
+    unsigned i = 0xdeadface;
+    parser.add('i', "int").store<double>(i);
+
+    cpparg::test::args_builder builder("./program");
+    builder.add("-i", "42.999");
+    auto [argc, argv] = builder.get();
+
+    parser.parse(argc, argv, cpparg::parsing_error_policy::rethrow);
+
+    EXPECT_EQ(i, 42);
+}

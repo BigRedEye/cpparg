@@ -250,7 +250,7 @@ public:
 
     template<typename Val, typename Dest>
     processor& store(Dest& dest) {
-        static_assert(std::is_assignable_v<Val&, Dest>, "Invalid store() value type");
+        static_assert(std::is_assignable_v<Dest&, Val>, "Invalid store() value type");
 
         handler_ = [this, &dest](std::string_view sv) {
             try {

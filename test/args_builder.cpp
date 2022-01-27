@@ -19,7 +19,7 @@ args_builder& args_builder::add(std::string_view key, std::string_view value) {
 }
 
 std::tuple<int, const char**> args_builder::get() {
-    return std::tuple(static_cast<int>(ptrs_.size()), ptrs_.data());
+    return std::tuple(static_cast<int>(ptrs_.size() - 1), ptrs_.data());
 }
 
 } // namespace cpparg::test
